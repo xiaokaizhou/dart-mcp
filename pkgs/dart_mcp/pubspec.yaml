@@ -1,0 +1,5 @@
+name: dart_mcp
+publish_to: none
+version: 0.1.0-wip
+environment:
+  sdk: ^3.7.0
