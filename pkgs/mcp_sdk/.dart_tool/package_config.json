@@ -1,0 +1,17 @@
+{
+  "configVersion": 2,
+  "packages": [
+    {
+      "name": "mcp_sdk",
+      "rootUri": "../",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
+    }
+  ],
+  "generated": "2025-03-20T17:50:23.507274Z",
+  "generator": "pub",
+  "generatorVersion": "3.8.0-149.0.dev",
+  "flutterRoot": "file:///Users/jakemac/flutter",
+  "flutterVersion": "3.30.0-1.0.pre.457",
+  "pubCache": "file:///Users/jakemac/.pub-cache"
+}

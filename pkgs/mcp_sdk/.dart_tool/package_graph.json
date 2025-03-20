@@ -1,0 +1,14 @@
+{
+  "roots": [
+    "mcp_sdk"
+  ],
+  "packages": [
+    {
+      "name": "mcp_sdk",
+      "version": "0.1.0-wip",
+      "dependencies": [],
+      "devDependencies": []
+    }
+  ],
+  "configVersion": 1
+}
