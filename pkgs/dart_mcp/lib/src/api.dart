@@ -42,15 +42,16 @@ extension type MetaWithProgressToken.fromMap(Map<String, Object?> _value)
 /// Should not be constructed directly, and has no public constructor.
 extension type Request._fromMap(Map<String, Object?> _value) {
   /// If specified, the caller is requesting out-of-band progress notifications
-  /// for this request (as represented by notifications/progress). The value of
-  /// this parameter is an opaque token that will be attached to any subsequent
-  /// notifications. The receiver is not obligated to provide these
-  /// notifications.
+  /// for this request (as represented by notifications/progress).
+  ///
+  /// The value of this parameter is an opaque token that will be attached to
+  /// any subsequent notifications. The receiver is not obligated to provide
+  /// these notifications.
   MetaWithProgressToken? get meta => _value['_meta'] as MetaWithProgressToken?;
 }
 
 /// Base interface for all notifications.
-extension type Notification(Map<String, Object?> _value) implements Request {
+extension type Notification(Map<String, Object?> _value) {
   /// This parameter name is reserved by MCP to allow clients and servers to
   /// attach additional metadata to their notifications.
   Meta? get meta => _value['_meta'] as Meta?;
@@ -69,14 +70,14 @@ extension type EmptyResult.fromMap(Map<String, Object?> _) implements Result {
 /// This notification can be sent by either side to indicate that it is
 /// cancelling a previously-issued request.
 ///
-///  The request SHOULD still be in-flight, but due to communication latency, it
+/// The request SHOULD still be in-flight, but due to communication latency, it
 /// is always possible that this notification MAY arrive after the request has
 /// already finished.
 ///
-///  This notification indicates that the result will be unused, so any
-///  associated processing SHOULD cease.
+/// This notification indicates that the result will be unused, so any
+/// associated processing SHOULD cease.
 ///
-///  A client MUST NOT attempt to cancel its `initialize` request.
+/// A client MUST NOT attempt to cancel its `initialize` request.
 extension type CancelledNotification.fromMap(Map<String, Object?> _value)
     implements Notification {
   static const methodName = 'notifications/cancelled';
@@ -126,6 +127,7 @@ extension type InitializeRequest._fromMap(Map<String, Object?> _value)
   });
 
   /// The latest version of the Model Context Protocol that the client supports.
+  ///
   /// The client MAY decide to support older versions as well.
   String get protocolVersion => _value['protocolVersion'] as String;
   ClientCapabilities get capabilities =>
@@ -151,6 +153,7 @@ extension type InitializeResult.fromMap(Map<String, Object?> _value)
   });
 
   /// The version of the Model Context Protocol that the server wants to use.
+  ///
   /// This may not match the version that the client requested. If the client
   /// cannot support this version, it MUST disconnect.
   String get protocolVersion => _value['protocolVersion'] as String;
@@ -179,9 +182,10 @@ extension type InitializedNotification.fromMap(Map<String, Object?> _value)
       InitializedNotification.fromMap({if (meta != null) '_meta': meta});
 }
 
-/// Capabilities a client may support. Known capabilities are defined here, in
-/// this schema, but this is not a closed set: any client can define its own,
-/// additional capabilities.
+/// Capabilities a client may support.
+///
+/// Known capabilities are defined here, in this schema, but this is not a
+/// closed set: any client can define its own, additional capabilities.
 extension type ClientCapabilities.fromMap(Map<String, Object?> _value) {
   factory ClientCapabilities({
     Map<String, Object?>? experimental,
@@ -210,9 +214,10 @@ extension type RootsCapabilities.fromMap(Map<String, Object?> _value) {
   bool? get listChanged => _value['listChanged'] as bool?;
 }
 
-/// Capabilities that a server may support. Known capabilities are defined here,
-/// in this schema, but this is not a closed set: any server can define its own,
-/// additional capabilities.
+/// Capabilities that a server may support.
+///
+/// Known capabilities are defined here, in this schema, but this is not a
+/// closed set: any server can define its own, additional capabilities.
 extension type ServerCapabilities.fromMap(Map<String, Object?> _value) {
   factory ServerCapabilities({
     Map<String, Object?>? experimental,
@@ -241,6 +246,14 @@ extension type ServerCapabilities.fromMap(Map<String, Object?> _value) {
 
   /// Whether this server supports subscribing to resource updates.
   Resources? get resources => _value['resources'] as Resources?;
+
+  /// Sets [resources] if it is null, otherwise throws.
+  ///
+  // TODO: Add more setters for other types?
+  set resources(Resources? value) {
+    assert(resources == null);
+    _value['resources'] = value;
+  }
 
   /// Present if the server offers any tools to call.
   Tools? get tools => _value['tools'] as Tools?;
@@ -274,8 +287,20 @@ extension type Resources.fromMap(Map<String, Object?> _value) {
   /// list.
   bool? get listChanged => _value['listChanged'] as bool?;
 
+  /// Sets whether [listChanged] is supported.
+  set listChanged(bool? value) {
+    assert(listChanged == null);
+    _value['listChanged'] = value;
+  }
+
   /// Present if the server offers any resources to read.
   bool? get subscribe => _value['subscribe'] as bool?;
+
+  /// Sets whether [subscribe] is supported.
+  set subscribe(bool? value) {
+    assert(subscribe == null);
+    _value['subscribe'] = value;
+  }
 }
 
 /// Tools parameter for [ServerCapabilities].
@@ -365,6 +390,7 @@ extension type ServerImplementation.fromMap(Map<String, Object?> _value) {
 extension type PaginatedRequest._fromMap(Map<String, Object?> _value)
     implements Request {
   /// An opaque token representing the current pagination position.
+  ///
   /// If provided, the server should return results starting after this cursor.
   Cursor? get cursor => _value['cursor'] as Cursor?;
 }
@@ -381,195 +407,244 @@ extension type PaginatedResult._fromMap(Map<String, Object?> _value)
   Cursor? get cursor => _value['cursor'] as Cursor?;
 }
 
-// /* Resources */
-// /**
-//  * Sent from the client to request a list of resources the server has.
-//  */
-// export interface ListResourcesRequest extends PaginatedRequest {
-//   method: "resources/list";
-// }
+/// Sent from the client to request a list of resources the server has.
+extension type ListResourcesRequest.fromMap(Map<String, Object?> _value)
+    implements PaginatedRequest {
+  static const methodName = 'resources/list';
 
-// /**
-//  * The server's response to a resources/list request from the client.
-//  */
-// export interface ListResourcesResult extends PaginatedResult {
-//   resources: Resource[];
-// }
+  factory ListResourcesRequest({Cursor? cursor, Meta? meta}) =>
+      ListResourcesRequest.fromMap({
+        if (cursor != null) 'cursor': cursor,
+        if (meta != null) '_meta': meta,
+      });
+}
 
-// /**
-//  * Sent from the client to request a list of resource templates the server
-//  * has.
-//  */
-// export interface ListResourceTemplatesRequest extends PaginatedRequest {
-//   method: "resources/templates/list";
-// }
+/// The server's response to a resources/list request from the client.
+extension type ListResourcesResult.fromMap(Map<String, Object?> _value)
+    implements PaginatedResult {
+  factory ListResourcesResult({
+    required List<Resource> resources,
+    Cursor? cursor,
+    Meta? meta,
+  }) => ListResourcesResult.fromMap({
+    'resources': resources,
+    if (cursor != null) 'cursor': cursor,
+    if (meta != null) '_meta': meta,
+  });
 
-// /**
-//  * The server's response to a resources/templates/list request from the client.
-//  */
-// export interface ListResourceTemplatesResult extends PaginatedResult {
-//   resourceTemplates: ResourceTemplate[];
-// }
+  List<Resource> get resources =>
+      (_value['resources'] as List).cast<Resource>();
+}
 
-// /**
-//  * Sent from the client to the server, to read a specific resource URI.
-//  */
-// export interface ReadResourceRequest extends Request {
-//   method: "resources/read";
-//   params: {
-//     /**
-//      * The URI of the resource to read. The URI can use any protocol; it is
-//      * up to the server how to interpret it.
-//      *
-//      * @format uri
-//      */
-//     uri: string;
-//   };
-// }
+/// Sent from the client to request a list of resource templates the server
+/// has.
+extension type ListResourceTemplatesRequest.fromMap(Map<String, Object?> _value)
+    implements PaginatedRequest {
+  static const methodName = 'resources/templates/list';
 
-// /**
-//  * The server's response to a resources/read request from the client.
-//  */
-// export interface ReadResourceResult extends Result {
-//   contents: (TextResourceContents | BlobResourceContents)[];
-// }
+  factory ListResourceTemplatesRequest({Cursor? cursor, Meta? meta}) =>
+      ListResourceTemplatesRequest.fromMap({
+        if (cursor != null) 'cursor': cursor,
+        if (meta != null) '_meta': meta,
+      });
+}
 
-// /**
-//  * An optional notification from the server to the client, informing it that
-//  * the list of resources it can read from has changed. This may be issued by
-//  * servers without any previous subscription from the client.
-//  */
-// export interface ResourceListChangedNotification extends Notification {
-//   method: "notifications/resources/list_changed";
-// }
+/// The server's response to a resources/templates/list request from the client.
+extension type ListResourceTemplatesResult.fromMap(Map<String, Object?> _value)
+    implements PaginatedResult {
+  factory ListResourceTemplatesResult({
+    required List<ResourceTemplate> resourceTemplates,
+    Cursor? cursor,
+    Meta? meta,
+  }) => ListResourceTemplatesResult.fromMap({
+    'resourceTemplates': resourceTemplates,
+    if (cursor != null) 'cursor': cursor,
+    if (meta != null) '_meta': meta,
+  });
 
-// /**
-//  * Sent from the client to request resources/updated notifications from the
-//  * server whenever a particular resource changes.
-//  */
-// export interface SubscribeRequest extends Request {
-//   method: "resources/subscribe";
-//   params: {
-//     /**
-//      * The URI of the resource to subscribe to. The URI can use any protocol;
-//      * it is up to the server how to interpret it.
-//      *
-//      * @format uri
-//      */
-//     uri: string;
-//   };
-// }
+  List<ResourceTemplate> get resourceTemplates =>
+      (_value['resourceTemplates'] as List).cast<ResourceTemplate>();
+}
 
-// /**
-//  * Sent from the client to request cancellation of resources/updated
-//  * notifications from the server. This should follow a previous
-//  * resources/subscribe request.
-//  */
-// export interface UnsubscribeRequest extends Request {
-//   method: "resources/unsubscribe";
-//   params: {
-//     /**
-//      * The URI of the resource to unsubscribe from.
-//      *
-//      * @format uri
-//      */
-//     uri: string;
-//   };
-// }
+/// Sent from the client to the server, to read a specific resource URI.
+extension type ReadResourceRequest.fromMap(Map<String, Object?> _value)
+    implements Request {
+  static const methodName = 'resources/read';
 
-// /**
-//  * A notification from the server to the client, informing it that a resource
-//  * has changed and may need to be read again. This should only be sent if the
-//  * client previously sent a resources/subscribe request.
-//  */
-// export interface ResourceUpdatedNotification extends Notification {
-//   method: "notifications/resources/updated";
-//   params: {
-//     /**
-//      * The URI of the resource that has been updated. This might be a
-//      * sub-resource of the one that the client actually subscribed to.
-//      *
-//      * @format uri
-//      */
-//     uri: string;
-//   };
-// }
+  factory ReadResourceRequest({required String uri, Meta? meta}) =>
+      ReadResourceRequest.fromMap({
+        'uri': uri,
+        if (meta != null) '_meta': meta,
+      });
 
-// /**
-//  * A known resource that the server is capable of reading.
-//  */
-// export interface Resource extends Annotated {
-//   /**
-//    * The URI of this resource.
-//    *
-//    * @format uri
-//    */
-//   uri: string;
+  /// The URI of the resource to read. The URI can use any protocol; it is
+  /// up to the server how to interpret it.
+  String get uri => _value['uri'] as String;
+}
 
-//   /**
-//    * A human-readable name for this resource.
-//    *
-//    * This can be used by clients to populate UI elements.
-//    */
-//   name: string;
+/// The server's response to a resources/read request from the client.
+extension type ReadResourceResult.fromMap(Map<String, Object?> _value)
+    implements Result {
+  factory ReadResourceResult({
+    required List<ResourceContents> contents,
+    Meta? meta,
+  }) => ReadResourceResult.fromMap({
+    'contents': contents,
+    if (meta != null) '_meta': meta,
+  });
 
-//   /**
-//    * A description of what this resource represents.
-//    *
-//    * This can be used by clients to improve the LLM's understanding of
-//    * available resources. It can be thought of like a "hint" to the model.
-//    */
-//   description?: string;
+  List<ResourceContents> get contents =>
+      (_value['contents'] as List).cast<ResourceContents>();
+}
 
-//   /**
-//    * The MIME type of this resource, if known.
-//    */
-//   mimeType?: string;
+/// An optional notification from the server to the client, informing it that
+/// the list of resources it can read from has changed.
+///
+/// This may be issued by servers without any previous subscription from the
+/// client.
+extension type ResourceListChangedNotification.fromMap(
+  Map<String, Object?> _value
+)
+    implements Notification {
+  static const methodName = 'notifications/resources/list_changed';
 
-//   /**
-//    * The size of the raw resource content, in bytes (i.e., before base64
-//    * encoding or any tokenization), if known.
-//    *
-//    * This can be used by Hosts to display file sizes and estimate context
-//    * window usage.
-//    */
-//   size?: number;
-// }
+  factory ResourceListChangedNotification({Meta? meta}) =>
+      ResourceListChangedNotification.fromMap({
+        if (meta != null) '_meta': meta,
+      });
+}
 
-// /**
-//  * A template description for resources available on the server.
-//  */
-// export interface ResourceTemplate extends Annotated {
-//   /**
-//    * A URI template (according to RFC 6570) that can be used to construct
-//    * resource URIs.
-//    *
-//    * @format uri-template
-//    */
-//   uriTemplate: string;
+/// Sent from the client to request resources/updated notifications from the
+/// server whenever a particular resource changes.
+extension type SubscribeRequest.fromMap(Map<String, Object?> _value)
+    implements Request {
+  static const methodName = 'resources/subscribe';
 
-//   /**
-//    * A human-readable name for the type of resource this template refers to.
-//    *
-//    * This can be used by clients to populate UI elements.
-//    */
-//   name: string;
+  factory SubscribeRequest({required String uri, Meta? meta}) =>
+      SubscribeRequest.fromMap({'uri': uri, if (meta != null) '_meta': meta});
 
-//   /**
-//    * A description of what this template is for.
-//    *
-//    * This can be used by clients to improve the LLM's understanding of
-//    * available resources. It can be thought of like a "hint" to the model.
-//    */
-//   description?: string;
+  /// The URI of the resource to subscribe to. The URI can use any protocol;
+  /// it is up to the server how to interpret it.
+  String get uri => _value['uri'] as String;
+}
 
-//   /**
-//    * The MIME type for all resources that match this template. This should
-//    * only be included if all resources matching this template have the same
-//    * type.
-//    */
-//   mimeType?: string;
-// }
+/// Sent from the client to request cancellation of resources/updated
+/// notifications from the server.
+///
+/// This should follow a previous resources/subscribe request.
+extension type UnsubscribeRequest.fromMap(Map<String, Object?> _value)
+    implements Request {
+  static const methodName = 'resources/unsubscribe';
+
+  factory UnsubscribeRequest({required String uri, Meta? meta}) =>
+      UnsubscribeRequest.fromMap({'uri': uri, if (meta != null) '_meta': meta});
+
+  /// The URI of the resource to unsubscribe from.
+  String get uri => _value['uri'] as String;
+}
+
+/// A notification from the server to the client, informing it that a resource
+/// has changed and may need to be read again.
+///
+/// This should only be sent if the client previously sent a
+/// resources/subscribe request.
+extension type ResourceUpdatedNotification.fromMap(Map<String, Object?> _value)
+    implements Notification {
+  static const methodName = 'notifications/resources/updated';
+
+  factory ResourceUpdatedNotification({required String uri, Meta? meta}) =>
+      ResourceUpdatedNotification.fromMap({
+        'uri': uri,
+        if (meta != null) '_meta': meta,
+      });
+
+  /// The URI of the resource that has been updated.
+  ///
+  /// This might be a sub-resource of the one that the client actually
+  /// subscribed to.
+  String get uri => _value['uri'] as String;
+}
+
+/// A known resource that the server is capable of reading.
+//
+// TODO: Implement Annotated
+extension type Resource.fromMap(Map<String, Object?> _value) {
+  factory Resource({
+    required String uri,
+    required String name,
+    String? description,
+    String? mimeType,
+    int? size,
+  }) => Resource.fromMap({
+    'uri': uri,
+    'name': name,
+    if (description != null) 'description': description,
+    if (mimeType != null) 'mimeType': mimeType,
+    if (size != null) 'size': size,
+  });
+
+  /// The URI of this resource.
+  String get uri => _value['uri'] as String;
+
+  /// A human-readable name for this resource.
+  ///
+  /// This can be used by clients to populate UI elements.
+  String get name => _value['name'] as String;
+
+  /// A description of what this resource represents.
+  ///
+  /// This can be used by clients to improve the LLM's understanding of
+  /// available resources. It can be thought of like a "hint" to the model.
+  String? get description => _value['description'] as String?;
+
+  /// The MIME type of this resource, if known.
+  String? get mimeType => _value['mimeType'] as String?;
+
+  /// The size of the raw resource content, in bytes (i.e., before base64
+  /// encoding or any tokenization), if known.
+  ///
+  /// This can be used by Hosts to display file sizes and estimate context
+  /// window usage.
+  int? get size => _value['size'] as int;
+}
+
+/// A template description for resources available on the server.
+//
+// TODO: implement Annotated
+extension type ResourceTemplate.fromMap(Map<String, Object?> _value) {
+  factory ResourceTemplate({
+    required String uriTemplate,
+    required String name,
+    String? description,
+    String? mimeType,
+  }) => ResourceTemplate.fromMap({
+    'uriTemplate': uriTemplate,
+    'name': name,
+    if (description != null) 'description': description,
+    if (mimeType != null) 'mimeType': mimeType,
+  });
+
+  /// A URI template (according to RFC 6570) that can be used to construct
+  /// resource URIs.
+  String get uriTemplate => _value['uriTemplate'] as String;
+
+  /// A human-readable name for the type of resource this template refers to.
+  ///
+  /// This can be used by clients to populate UI elements.
+  String get name => _value['name'] as String;
+
+  /// A description of what this template is for.
+  ///
+  /// This can be used by clients to improve the LLM's understanding of
+  /// available resources. It can be thought of like a "hint" to the model.
+  String? get description => _value['description'] as String?;
+
+  /// The MIME type for all resources that match this template.
+  ///
+  /// This should only be included if all resources matching this template have
+  /// the same type.
+  String? get mimeType => _value['mimeType'] as String?;
+}
 
 // /* Prompts */
 // /**
@@ -823,12 +898,15 @@ extension type EmbeddedResource.fromMap(Map<String, Object?> _value)
 }
 
 /// Base class for the contents of a specific resource or sub-resource.
-extension type ResourceContentsResult.fromMap(Map<String, Object?> _value) {
-  factory ResourceContentsResult({required String uri, String? mimeType}) =>
-      ResourceContentsResult.fromMap({
-        'uri': uri,
-        if (mimeType != null) 'mimeType': mimeType,
-      });
+///
+/// Could be either [TextResourceContents] or [BlobResourceContents],
+/// use [isText] and [isBlob] before casting to the more specific type.
+extension type ResourceContents.fromMap(Map<String, Object?> _value) {
+  /// Whether or not this represents [TextResourceContents].
+  bool get isText => _value.containsKey('text');
+
+  /// Whether or not this represents [BlobResourceContents].
+  bool get isBlob => _value.containsKey('blob');
 
   /// The URI of this resource.
   String get uri => _value['uri'] as String;
@@ -837,9 +915,9 @@ extension type ResourceContentsResult.fromMap(Map<String, Object?> _value) {
   String? get mimeType => _value['mimeType'] as String?;
 }
 
-/// A [ResourceContentsResult] that contains text.
+/// A [ResourceContents] that contains text.
 extension type TextResourceContents.fromMap(Map<String, Object?> _value)
-    implements ResourceContentsResult {
+    implements ResourceContents {
   factory TextResourceContents({
     required String uri,
     required String text,
@@ -850,14 +928,16 @@ extension type TextResourceContents.fromMap(Map<String, Object?> _value)
     if (mimeType != null) 'mimeType': mimeType,
   });
 
-  /// The text of the item. This must only be set if the item can actually be
-  /// represented as text (not binary data).
+  /// The text of the item.
+  ///
+  /// This must only be set if the item can actually be represented as text
+  /// (not binary data).
   String get text => _value['text'] as String;
 }
 
-/// A [ResourceContentsResult] that contains binary data encoded as base64.
+/// A [ResourceContents] that contains binary data encoded as base64.
 extension type BlobResourceContents.fromMap(Map<String, Object?> _value)
-    implements ResourceContentsResult {
+    implements ResourceContents {
   factory BlobResourceContents({
     required String uri,
     required String blob,
@@ -896,8 +976,10 @@ extension type CallToolRequest._fromMap(Map<String, Object?> _value)
 }
 
 /// An optional notification from the server to the client, informing it that
-/// the list of tools it offers has changed. This may be issued by servers
-/// without any previous subscription from the client.
+/// the list of tools it offers has changed.
+///
+/// This may be issued by servers without any previous subscription from the
+/// client.
 extension type ToolListChangedNotification.fromMap(Map<String, Object?> _value)
     implements Notification {
   static const methodName = 'notifications/tools/list_changed';
