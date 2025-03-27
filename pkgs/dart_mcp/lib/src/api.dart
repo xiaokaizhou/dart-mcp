@@ -244,12 +244,16 @@ extension type ServerCapabilities.fromMap(Map<String, Object?> _value) {
   /// Present if the server offers any prompt templates.
   Prompts? get prompts => _value['prompts'] as Prompts?;
 
+  /// Sets [prompts] if it is null, otherwise throws.
+  set prompts(Prompts? value) {
+    assert(prompts == null);
+    _value['prompts'] = value;
+  }
+
   /// Whether this server supports subscribing to resource updates.
   Resources? get resources => _value['resources'] as Resources?;
 
   /// Sets [resources] if it is null, otherwise throws.
-  ///
-  // TODO: Add more setters for other types?
   set resources(Resources? value) {
     assert(resources == null);
     _value['resources'] = value;
@@ -259,8 +263,6 @@ extension type ServerCapabilities.fromMap(Map<String, Object?> _value) {
   Tools? get tools => _value['tools'] as Tools?;
 
   /// Sets [tools] if it is null, otherwise throws.
-  ///
-  // TODO: Add more setters for other types?
   set tools(Tools? value) {
     assert(tools == null);
     _value['tools'] = value;
@@ -274,6 +276,12 @@ extension type Prompts.fromMap(Map<String, Object?> _value) {
 
   /// Whether this server supports notifications for changes to the prompt list.
   bool? get listChanged => _value['listChanged'] as bool?;
+
+  /// Sets whether [listChanged] is supported.
+  set listChanged(bool? value) {
+    assert(listChanged == null);
+    _value['listChanged'] = value;
+  }
 }
 
 /// Resources parameter for [ServerCapabilities].
@@ -646,110 +654,159 @@ extension type ResourceTemplate.fromMap(Map<String, Object?> _value) {
   String? get mimeType => _value['mimeType'] as String?;
 }
 
-// /* Prompts */
-// /**
-//  * Sent from the client to request a list of prompts and prompt templates the
-//  * server has.
-//  */
-// export interface ListPromptsRequest extends PaginatedRequest {
-//   method: "prompts/list";
-// }
+/// Sent from the client to request a list of prompts and prompt templates the
+/// server has.
+extension type ListPromptsRequest.fromMap(Map<String, Object?> _value)
+    implements PaginatedRequest {
+  static const methodName = 'prompts/list';
 
-// /**
-//  * The server's response to a prompts/list request from the client.
-//  */
-// export interface ListPromptsResult extends PaginatedResult {
-//   prompts: Prompt[];
-// }
+  factory ListPromptsRequest({Cursor? cursor, Meta? meta}) =>
+      ListPromptsRequest.fromMap({
+        if (cursor != null) 'cursor': cursor,
+        if (meta != null) '_meta': meta,
+      });
+}
 
-// /**
-//  * Used by the client to get a prompt provided by the server.
-//  */
-// export interface GetPromptRequest extends Request {
-//   method: "prompts/get";
-//   params: {
-//     /**
-//      * The name of the prompt or prompt template.
-//      */
-//     name: string;
-//     /**
-//      * Arguments to use for templating the prompt.
-//      */
-//     arguments?: { [key: string]: string };
-//   };
-// }
+/// The server's response to a prompts/list request from the client.
+extension type ListPromptsResult.fromMap(Map<String, Object?> _value)
+    implements PaginatedResult {
+  factory ListPromptsResult({
+    required List<Prompt> prompts,
+    Cursor? cursor,
+    Meta? meta,
+  }) => ListPromptsResult.fromMap({
+    'prompts': prompts,
+    if (cursor != null) 'cursor': cursor,
+    if (meta != null) '_meta': meta,
+  });
 
-// /**
-//  * The server's response to a prompts/get request from the client.
-//  */
-// export interface GetPromptResult extends Result {
-//   /**
-//    * An optional description for the prompt.
-//    */
-//   description?: string;
-//   messages: PromptMessage[];
-// }
+  List<Prompt> get prompts => (_value['prompts'] as List).cast<Prompt>();
+}
 
-// /**
-//  * A prompt or prompt template that the server offers.
-//  */
-// export interface Prompt {
-//   /**
-//    * The name of the prompt or prompt template.
-//    */
-//   name: string;
-//   /**
-//    * An optional description of what this prompt provides
-//    */
-//   description?: string;
-//   /**
-//    * A list of arguments to use for templating the prompt.
-//    */
-//   arguments?: PromptArgument[];
-// }
+/// Used by the client to get a prompt provided by the server.
+extension type GetPromptRequest.fromMap(Map<String, Object?> _value)
+    implements Request {
+  static const methodName = 'prompts/get';
 
-// /**
-//  * Describes an argument that a prompt can accept.
-//  */
-// export interface PromptArgument {
-//   /**
-//    * The name of the argument.
-//    */
-//   name: string;
-//   /**
-//    * A human-readable description of the argument.
-//    */
-//   description?: string;
-//   /**
-//    * Whether this argument must be provided.
-//    */
-//   required?: boolean;
-// }
+  factory GetPromptRequest({
+    required String name,
+    Map<String, Object?>? arguments,
+    Meta? meta,
+  }) => GetPromptRequest.fromMap({
+    'name': name,
+    if (arguments != null) 'arguments': arguments,
+    if (meta != null) '_meta': meta,
+  });
 
-// /**
-//  * The sender or recipient of messages and data in a conversation.
-//  */
-// export type Role = "user" | "assistant";
+  /// The name of the prompt or prompt template.
+  String get name => _value['name'] as String;
 
-// /**
-//  * Describes a message returned as part of a prompt.
-//  *
-//  * This is similar to `SamplingMessage`, but also supports the embedding of
-//  * resources from the MCP server.
-//  */
-// export interface PromptMessage {
-//   role: Role;
-//   content: TextContent | ImageContent | EmbeddedResource;
-// }
+  /// Arguments to use for templating the prompt.
+  Map<String, Object?>? get arguments =>
+      (_value['arguments'] as Map?)?.cast<String, Object?>();
+}
 
-// /**
-//  * An optional notification from the server to the client, informing it that
-//  * the list of prompts it offers has changed. This may be issued by servers
-//  * without any previous subscription from the client.
-//  */
-// export interface PromptListChangedNotification extends Notification {
-//   method: "notifications/prompts/list_changed";
-// }
+/// The server's response to a prompts/get request from the client.
+extension type GetPromptResult.fromMap(Map<String, Object?> _value)
+    implements Result {
+  factory GetPromptResult({
+    String? description,
+    required List<PromptMessage> messages,
+    Meta? meta,
+  }) => GetPromptResult.fromMap({
+    if (description != null) 'description': description,
+    'messages': messages,
+    if (meta != null) '_meta': meta,
+  });
+
+  /// An optional description for the prompt.
+  String? get description => _value['description'] as String?;
+
+  /// All the messages in this prompt.
+  ///
+  /// Prompts may be entire conversation flows between users and assistants.
+  List<PromptMessage> get messages =>
+      (_value['messages'] as List).cast<PromptMessage>();
+}
+
+/// A prompt or prompt template that the server offers.
+extension type Prompt.fromMap(Map<String, Object?> _value) {
+  factory Prompt({
+    required String name,
+    String? description,
+    List<PromptArgument>? arguments,
+  }) => Prompt.fromMap({
+    'name': name,
+    if (description != null) 'description': description,
+    if (arguments != null) 'arguments': arguments,
+  });
+
+  /// The name of the prompt or prompt template.
+  String get name => _value['name'] as String;
+
+  /// An optional description of what this prompt provides.
+  String? get description => _value['description'] as String?;
+
+  /// A list of arguments to use for templating the prompt.
+  List<PromptArgument>? get arguments => (_value['arguments'] as List?)?.cast();
+}
+
+/// Describes an argument that a prompt can accept.
+extension type PromptArgument.fromMap(Map<String, Object?> _value) {
+  factory PromptArgument({
+    required String name,
+    String? description,
+    bool? required,
+  }) => PromptArgument.fromMap({
+    'name': name,
+    if (description != null) 'description': description,
+    if (required != null) 'required': required,
+  });
+
+  /// The name of the argument.
+  String get name => _value['name'] as String;
+
+  /// A human-readable description of the argument.
+  String? get description => _value['description'] as String?;
+
+  /// Whether this argument must be provided.
+  bool? get required => _value['required'] as bool?;
+}
+
+/// The sender or recipient of messages and data in a conversation.
+enum Role { user, assistant }
+
+/// Describes a message returned as part of a prompt.
+///
+/// This is similar to `SamplingMessage`, but also supports the embedding of
+/// resources from the MCP server.
+extension type PromptMessage.fromMap(Map<String, Object?> _value) {
+  factory PromptMessage({required Role role, required List<Content> content}) =>
+      PromptMessage.fromMap({'role': role.name, 'content': content});
+
+  /// The expected [Role] for this message in the prompt (multi-message
+  /// prompt flows may outline a back and forth between users and assistants).
+  Role get role =>
+      Role.values.firstWhere((role) => role.name == _value['role']);
+
+  /// The content of the message, see [Content] docs for the possible types.
+  Content get content => _value['content'] as Content;
+}
+
+/// An optional notification from the server to the client, informing it that
+/// the list of prompts it offers has changed.
+///
+/// This may be issued by servers without any previous subscription from the
+/// client.
+extension type PromptListChangedNotification.fromMap(
+  Map<String, Object?> _value
+)
+    implements Notification {
+  static const methodName = 'notifications/prompts/list_changed';
+
+  factory PromptListChangedNotification({Meta? meta}) =>
+      PromptListChangedNotification.fromMap({if (meta != null) '_meta': meta});
+}
 
 /// Sent from the client to request a list of tools the server has.
 extension type ListToolsRequest.fromMap(Map<String, Object?> _value)
@@ -793,7 +850,7 @@ extension type CallToolResult.fromMap(Map<String, Object?> _value)
     implements Result {
   factory CallToolResult({
     Meta? meta,
-    required List<UnionType> content,
+    required List<Content> content,
     bool? isError,
   }) => CallToolResult.fromMap({
     'content': content,
@@ -803,7 +860,7 @@ extension type CallToolResult.fromMap(Map<String, Object?> _value)
 
   /// The type of content, either [TextContent], [ImageContent],
   /// or [EmbeddedResource],
-  List<UnionType> get content => (_value['content'] as List).cast<UnionType>();
+  List<Content> get content => (_value['content'] as List).cast<Content>();
 
   /// Whether the tool call ended in an error.
   ///
@@ -811,24 +868,42 @@ extension type CallToolResult.fromMap(Map<String, Object?> _value)
   bool? get isError => _value['isError'] as bool?;
 }
 
-/// The response type used when something returns more than one type.
+/// Could be either [TextContent], [ImageContent] or [EmbeddedResource].
 ///
-/// Can wrap any response type, but it must have a `type` key.
+/// Use [isText], [isImage] and [isEmbeddedResource] before casting to the more
+/// specific types, or switch on the [type] and then cast.
 ///
-/// Should be used by doing a `switch` on the type, and then calling the
-/// `fromMap` constructor on the appropriate type.
-extension type UnionType._(Map<String, Object?> _value) {
-  factory UnionType(Map<String, Object?> value) {
+/// Doing `is` checks does not work because these are just extension types, they
+/// all have the same runtime type (`Map<String, Object?>`).
+extension type Content._(Map<String, Object?> _value) {
+  factory Content.fromMap(Map<String, Object?> value) {
     assert(value.containsKey('type'));
-    return UnionType._(value);
+    return Content._(value);
   }
+
+  /// Whether or not this is a [TextContent].
+  bool get isText => _value['type'] == TextContent.expectedType;
+
+  /// Whether or not this is a [ImageContent].
+  bool get isImage => _value['type'] == ImageContent.expectedType;
+
+  /// Whether or not this is an [EmbeddedResource].
+  bool get isEmbeddedResource =>
+      _value['type'] == EmbeddedResource.expectedType;
+
+  /// The type of content.
+  ///
+  /// You can use this in a switch to handle the various types (see the static
+  /// `expectedType` getters), or you can use [isText], [isImage], and
+  /// [isEmbeddedResource] to determine the type and then do the cast.
+  String get type => _value['type'] as String;
 }
 
 /// Text provided to an LLM.
 ///
 // TODO: implement `Annotated`.
 extension type TextContent.fromMap(Map<String, Object?> _value)
-    implements UnionType {
+    implements Content {
   static const expectedType = 'text';
 
   factory TextContent({required String text}) =>
@@ -848,7 +923,7 @@ extension type TextContent.fromMap(Map<String, Object?> _value)
 ///
 // TODO: implement `Annotated`.
 extension type ImageContent.fromMap(Map<String, Object?> _value)
-    implements UnionType {
+    implements Content {
   static const expectedType = 'image';
 
   factory ImageContent({required String data, required String mimeType}) =>
@@ -879,10 +954,10 @@ extension type ImageContent.fromMap(Map<String, Object?> _value)
 ///
 // TODO: implement `Annotated`.
 extension type EmbeddedResource.fromMap(Map<String, Object?> _value)
-    implements UnionType {
+    implements Content {
   static const expectedType = 'resource';
 
-  factory EmbeddedResource({required UnionType resource}) =>
+  factory EmbeddedResource({required Content resource}) =>
       EmbeddedResource.fromMap({'resource': resource, 'type': expectedType});
 
   String get type {
@@ -892,7 +967,7 @@ extension type EmbeddedResource.fromMap(Map<String, Object?> _value)
   }
 
   /// Either [TextResourceContents] or [BlobResourceContents].
-  UnionType get resource => _value['resource'] as UnionType;
+  ResourceContents get resource => _value['resource'] as ResourceContents;
 
   String? get mimeType => _value['mimeType'] as String?;
 }
@@ -1327,16 +1402,26 @@ extension type InputSchema.fromMap(Map<String, Object?> _value) {
 //   uri: string;
 // }
 
-// /**
-//  * Identifies a prompt.
-//  */
-// export interface PromptReference {
-//   type: "ref/prompt";
-//   /**
-//    * The name of the prompt or prompt template
-//    */
-//   name: string;
-// }
+/// Identifies a prompt.
+extension type PromptReference.fromMap(Map<String, Object?> _value) {
+  static const expectedType = 'ref/prompt';
+
+  factory PromptReference({required String name}) =>
+      PromptReference.fromMap({'name': name, 'type': expectedType});
+
+  /// This should always be [expectedType].
+  ///
+  /// This has a [type] because it exists as a part of a union type, so this
+  /// distinguishes it from other types.
+  String get type {
+    final type = _value['type'] as String;
+    assert(type == expectedType);
+    return type;
+  }
+
+  /// The name of the prompt or prompt template
+  String get name => _value['name'] as String;
+}
 
 // /* Roots */
 // /**

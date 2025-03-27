@@ -77,6 +77,16 @@ class ServerConnection {
   final Peer _peer;
 
   /// Emits an event any time the server notifies us of a change to the list of
+  /// prompts it supports.
+  ///
+  /// This is a broadcast stream, events are not buffered and only future events
+  /// are given.
+  Stream<PromptListChangedNotification> get promptListChanged =>
+      _promptListChangedController.stream;
+  final _promptListChangedController =
+      StreamController<PromptListChangedNotification>.broadcast();
+
+  /// Emits an event any time the server notifies us of a change to the list of
   /// tools it supports.
   ///
   /// This is a broadcast stream, events are not buffered and only future events
@@ -109,6 +119,11 @@ class ServerConnection {
   ServerConnection.fromStreamChannel(StreamChannel<String> channel)
     : _peer = Peer(channel) {
     _peer.registerMethod(
+      PromptListChangedNotification.methodName,
+      convertParameters(_promptListChangedController.sink.add),
+    );
+
+    _peer.registerMethod(
       ToolListChangedNotification.methodName,
       convertParameters(_toolListChangedController.sink.add),
     );
@@ -130,6 +145,7 @@ class ServerConnection {
   Future<void> shutdown() async {
     await Future.wait([
       _peer.close(),
+      _promptListChangedController.close(),
       _toolListChangedController.close(),
       _resourceListChangedController.close(),
       _resourceUpdatedController.close(),
@@ -184,6 +200,22 @@ class ServerConnection {
     return ReadResourceResult.fromMap(
       ((await _peer.sendRequest(ReadResourceRequest.methodName, request))
               as Map)
+          .cast(),
+    );
+  }
+
+  /// Lists all the prompts from this server.
+  Future<ListPromptsResult> listPrompts(ListPromptsRequest request) async {
+    return ListPromptsResult.fromMap(
+      ((await _peer.sendRequest(ListPromptsRequest.methodName, request)) as Map)
+          .cast(),
+    );
+  }
+
+  /// Gets the requested [Prompt] from the server.
+  Future<GetPromptResult> getPrompt(GetPromptRequest request) async {
+    return GetPromptResult.fromMap(
+      ((await _peer.sendRequest(GetPromptRequest.methodName, request)) as Map)
           .cast(),
     );
   }
