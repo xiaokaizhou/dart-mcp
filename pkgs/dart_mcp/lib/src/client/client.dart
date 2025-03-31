@@ -3,6 +3,7 @@
 // BSD-style license that can be found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 // TODO: Refactor to drop this dependency?
 import 'dart:io';
@@ -12,12 +13,37 @@ import 'package:json_rpc_2/json_rpc_2.dart';
 import 'package:stream_channel/stream_channel.dart';
 
 import '../api.dart';
-import '../util.dart';
+import '../shared.dart';
 
-/// Base class for MCP clients to extend.
-abstract base class MCPClient {
-  ClientCapabilities get capabilities;
-  ClientImplementation get implementation;
+part 'roots_support.dart';
+
+/// The base class for MCP clients.
+///
+/// Can be directly constructed or extended with additional classes.
+///
+/// Adding [capabilities] is done through additional support mixins such as
+/// [RootsSupport].
+///
+/// Override the [initialize] function to perform setup logic inside mixins,
+/// this will be invoked at the end of base class constructor.
+base class MCPClient {
+  /// A description of the client sent to servers during initialization.
+  final ClientImplementation implementation;
+
+  MCPClient(this.implementation) {
+    initialize();
+  }
+
+  /// Lifecycle method called in the base class constructor.
+  ///
+  /// Used to modify the [capabilities] of this client from mixins, or perform
+  /// any other initialization that is required.
+  void initialize() {}
+
+  /// The capabilities of this client.
+  ///
+  /// This can be modified by overriding the [initialize] method.
+  final ClientCapabilities capabilities = ClientCapabilities();
 
   final Map<String, ServerConnection> _connections = {};
 
@@ -48,7 +74,13 @@ abstract base class MCPClient {
   /// Returns a connection for an MCP server with [name], communicating over
   /// [channel], which is already established.
   ServerConnection connectServer(String name, StreamChannel<String> channel) {
-    var connection = ServerConnection.fromStreamChannel(channel);
+    // For type promotion in this function.
+    var self = this;
+
+    var connection = ServerConnection.fromStreamChannel(
+      channel,
+      rootsSupport: self is RootsSupport ? self : null,
+    );
     _connections[name] = connection;
     return connection;
   }
@@ -73,15 +105,7 @@ abstract base class MCPClient {
 }
 
 /// An active server connection.
-class ServerConnection {
-  final Peer _peer;
-
-  /// Progress controllers by token.
-  ///
-  /// These are created through the [onProgress] method.
-  final _progressControllers =
-      <ProgressToken, StreamController<ProgressNotification>>{};
-
+base class ServerConnection extends MCPBase {
   /// Emits an event any time the server notifies us of a change to the list of
   /// prompts it supports.
   ///
@@ -130,69 +154,68 @@ class ServerConnection {
   final _logController =
       StreamController<LoggingMessageNotification>.broadcast();
 
-  ServerConnection.fromStreamChannel(StreamChannel<String> channel)
-    : _peer = Peer(channel) {
-    _peer.registerMethod(PingRequest.methodName, convertParameters(handlePing));
+  ServerConnection.fromStreamChannel(
+    StreamChannel<String> channel, {
+    RootsSupport? rootsSupport,
+  }) : super(Peer(channel)) {
+    registerRequestHandler(PingRequest.methodName, _handlePing);
 
-    _peer.registerMethod(
-      ProgressNotification.methodName,
-      convertParameters(handleProgress),
-    );
+    if (rootsSupport != null) {
+      registerRequestHandler(
+        ListRootsRequest.methodName,
+        rootsSupport.handleListRoots,
+      );
+    }
 
-    _peer.registerMethod(
+    registerNotificationHandler(
       PromptListChangedNotification.methodName,
-      convertParameters(_promptListChangedController.sink.add),
+      _promptListChangedController.sink.add,
     );
 
-    _peer.registerMethod(
+    registerNotificationHandler(
       ToolListChangedNotification.methodName,
-      convertParameters(_toolListChangedController.sink.add),
+      _toolListChangedController.sink.add,
     );
 
-    _peer.registerMethod(
+    registerNotificationHandler(
       ResourceListChangedNotification.methodName,
-      convertParameters(_resourceListChangedController.sink.add),
+      _resourceListChangedController.sink.add,
     );
 
-    _peer.registerMethod(
+    registerNotificationHandler(
       ResourceUpdatedNotification.methodName,
-      convertParameters(_resourceUpdatedController.sink.add),
+      _resourceUpdatedController.sink.add,
     );
 
-    _peer.registerMethod(
+    registerNotificationHandler(
       LoggingMessageNotification.methodName,
-      convertParameters(_logController.sink.add),
+      _logController.sink.add,
     );
-
-    _peer.listen();
   }
 
   /// Close all connections and streams so the process can cleanly exit.
+  @override
   Future<void> shutdown() async {
-    final progressControllers = _progressControllers.values.toList();
-    _progressControllers.clear();
     await Future.wait([
-      _peer.close(),
+      super.shutdown(),
       _promptListChangedController.close(),
       _toolListChangedController.close(),
       _resourceListChangedController.close(),
       _resourceUpdatedController.close(),
       _logController.close(),
-      for (var c in progressControllers) c.close(),
     ]);
   }
 
   /// Called after a successful call to [initialize].
-  void notifyInitialized(InitializedNotification notification) {
-    _peer.sendNotification(InitializedNotification.methodName, notification);
-  }
+  void notifyInitialized(InitializedNotification notification) =>
+      sendNotification(InitializedNotification.methodName, notification);
 
   /// Initializes the server, this should be done before anything else.
   ///
   /// The client must call [notifyInitialized] after receiving and accepting
   /// this response.
   Future<InitializeResult> initialize(InitializeRequest request) =>
-      _sendRequest(InitializeRequest.methodName, request);
+      sendRequest(InitializeRequest.methodName, request);
 
   /// Pings the server, and returns whether or not it responded within
   /// [timeout].
@@ -207,106 +230,54 @@ class ServerConnection {
   Future<bool> ping(
     PingRequest request, {
     Duration timeout = const Duration(seconds: 1),
-  }) => _sendRequest<EmptyResult>(
+  }) => sendRequest<EmptyResult>(
     PingRequest.methodName,
     request,
   ).then((_) => true).timeout(timeout, onTimeout: () => false);
 
   /// The server may ping us at any time, and we should respond with an empty
   /// response.
-  FutureOr<EmptyResult> handlePing(PingRequest request) => EmptyResult();
-
-  /// Handles [ProgressNotification]s and forwards them to the streams returned
-  /// by [onProgress] calls.
-  void handleProgress(ProgressNotification notification) =>
-      _progressControllers[notification.progressToken]?.add(notification);
-
-  /// A stream of progress notifications for a given [request].
-  ///
-  /// The [request] must contain a [ProgressToken] in its metadata (at
-  /// `request.meta.progressToken`), otherwise an [ArgumentError] will be
-  /// thrown.
-  ///
-  /// The returned stream is a "broadcast" stream, so events are not buffered
-  /// and previous events will not be re-played when you subscribe.
-  Stream<ProgressNotification> onProgress(Request request) {
-    final token = request.meta?.progressToken;
-    if (token == null) {
-      throw ArgumentError.value(
-        null,
-        'request.meta.progressToken',
-        'A progress token is required in order to track progress for a request',
-      );
-    }
-    return (_progressControllers[token] ??=
-            StreamController<ProgressNotification>.broadcast())
-        .stream;
-  }
-
-  /// Notifies the server of progress towards completing some request.
-  void notifyProgress(ProgressNotification notification) =>
-      _peer.sendNotification(ProgressNotification.methodName, notification);
-
-  /// Sends [request] to the server, and handles coercing the response to the
-  /// type [T].
-  ///
-  /// Closes any progress streams for [request] once the response has been
-  /// received.
-  Future<T> _sendRequest<T extends Result>(
-    String methodName,
-    Request request,
-  ) async {
-    try {
-      return (await _peer.sendRequest(methodName, request) as Map)
-              .cast<String, Object?>()
-          as T;
-    } finally {
-      final token = request.meta?.progressToken;
-      if (token != null) {
-        await _progressControllers.remove(token)?.close();
-      }
-    }
-  }
+  EmptyResult _handlePing(PingRequest request) => EmptyResult();
 
   /// List all the tools from this server.
   Future<ListToolsResult> listTools(ListToolsRequest request) =>
-      _sendRequest(ListToolsRequest.methodName, request);
+      sendRequest(ListToolsRequest.methodName, request);
 
   /// Invokes a [Tool] returned from the [ListToolsResult].
   Future<CallToolResult> callTool(CallToolRequest request) =>
-      _sendRequest(CallToolRequest.methodName, request);
+      sendRequest(CallToolRequest.methodName, request);
 
   /// Lists all the resources from this server.
   Future<ListResourcesResult> listResources(ListResourcesRequest request) =>
-      _sendRequest(ListResourcesRequest.methodName, request);
+      sendRequest(ListResourcesRequest.methodName, request);
 
   /// Reads a [Resource] returned from the [ListResourcesResult].
   Future<ReadResourceResult> readResource(ReadResourceRequest request) =>
-      _sendRequest(ReadResourceRequest.methodName, request);
+      sendRequest(ReadResourceRequest.methodName, request);
 
   /// Lists all the prompts from this server.
   Future<ListPromptsResult> listPrompts(ListPromptsRequest request) =>
-      _sendRequest(ListPromptsRequest.methodName, request);
+      sendRequest(ListPromptsRequest.methodName, request);
 
   /// Gets the requested [Prompt] from the server.
   Future<GetPromptResult> getPrompt(GetPromptRequest request) =>
-      _sendRequest(GetPromptRequest.methodName, request);
+      sendRequest(GetPromptRequest.methodName, request);
 
   /// Subscribes this client to a resource by URI (at `request.uri`).
   ///
   /// Updates will come on the [resourceUpdated] stream.
   Future<void> subscribeResource(SubscribeRequest request) =>
-      _sendRequest(SubscribeRequest.methodName, request);
+      sendRequest(SubscribeRequest.methodName, request);
 
   /// Unsubscribes this client to a resource by URI (at `request.uri`).
   ///
   /// Updates will come on the [resourceUpdated] stream.
   Future<void> unsubscribeResource(UnsubscribeRequest request) =>
-      _sendRequest(UnsubscribeRequest.methodName, request);
+      sendRequest(UnsubscribeRequest.methodName, request);
 
   /// Sends a request to change the current logging level.
   ///
   /// Completes when the response is received.
   Future<void> setLogLevel(SetLevelRequest request) =>
-      _sendRequest(SetLevelRequest.methodName, request);
+      sendRequest(SetLevelRequest.methodName, request);
 }

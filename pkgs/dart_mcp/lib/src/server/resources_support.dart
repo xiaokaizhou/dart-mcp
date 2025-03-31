@@ -38,24 +38,12 @@ base mixin ResourcesSupport on MCPServer {
   /// subscription preferences.
   @override
   FutureOr<InitializeResult> initialize(InitializeRequest request) async {
-    _peer.registerMethod(
-      ListResourcesRequest.methodName,
-      convertParameters(_listResources),
-    );
+    registerRequestHandler(ListResourcesRequest.methodName, _listResources);
 
-    _peer.registerMethod(
-      ReadResourceRequest.methodName,
-      convertParameters(_readResource),
-    );
+    registerRequestHandler(ReadResourceRequest.methodName, _readResource);
 
-    _peer.registerMethod(
-      SubscribeRequest.methodName,
-      convertParameters(_subscribeResource),
-    );
-    _peer.registerMethod(
-      UnsubscribeRequest.methodName,
-      convertParameters(_unsubscribeResource),
-    );
+    registerRequestHandler(SubscribeRequest.methodName, _subscribeResource);
+    registerRequestHandler(UnsubscribeRequest.methodName, _unsubscribeResource);
 
     var result = await super.initialize(request);
     (result.capabilities.resources ??= Resources())
@@ -108,7 +96,7 @@ base mixin ResourcesSupport on MCPServer {
     if (impl != null) _resourceImpls[resource.uri] = impl;
 
     if (_subscribedResources.contains(resource.uri)) {
-      _peer.sendNotification(
+      sendNotification(
         ResourceUpdatedNotification.methodName,
         ResourceUpdatedNotification(uri: resource.uri),
       );
@@ -143,7 +131,7 @@ base mixin ResourcesSupport on MCPServer {
   }
 
   /// Subscribes the client to the resource at `request.uri`.
-  FutureOr<EmptyResult> _subscribeResource(SubscribeRequest request) async {
+  FutureOr<EmptyResult> _subscribeResource(SubscribeRequest request) {
     if (!_resources.containsKey(request.uri)) {
       throw ArgumentError.value(request.uri, 'uri', 'Resource not found');
     }
@@ -154,7 +142,7 @@ base mixin ResourcesSupport on MCPServer {
   }
 
   /// Unsubscribes the client to the resource at `request.uri`.
-  FutureOr<EmptyResult> _unsubscribeResource(UnsubscribeRequest request) async {
+  FutureOr<EmptyResult> _unsubscribeResource(UnsubscribeRequest request) {
     _subscribedResources.remove(request.uri);
 
     return EmptyResult();
@@ -162,10 +150,8 @@ base mixin ResourcesSupport on MCPServer {
 
   /// Called whenever the list of resources changes, it is the job of the client
   /// to then ask again for the list of tools.
-  void _notifyResourceListChanged() {
-    _peer.sendNotification(
-      ResourceListChangedNotification.methodName,
-      ResourceListChangedNotification(),
-    );
-  }
+  void _notifyResourceListChanged() => sendNotification(
+    ResourceListChangedNotification.methodName,
+    ResourceListChangedNotification(),
+  );
 }
