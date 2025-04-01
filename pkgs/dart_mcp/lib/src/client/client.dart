@@ -16,6 +16,7 @@ import '../api/api.dart';
 import '../shared.dart';
 
 part 'roots_support.dart';
+part 'sampling_support.dart';
 
 /// The base class for MCP clients.
 ///
@@ -80,6 +81,7 @@ base class MCPClient {
     var connection = ServerConnection.fromStreamChannel(
       channel,
       rootsSupport: self is RootsSupport ? self : null,
+      samplingSupport: self is SamplingSupport ? self : null,
     );
     _connections[name] = connection;
     return connection;
@@ -106,6 +108,11 @@ base class MCPClient {
 
 /// An active server connection.
 base class ServerConnection extends MCPBase {
+  /// The [ServerImplementation] returned from the [initialize] request.
+  ///
+  /// Only assigned after [initialize] has successfully completed.
+  late ServerImplementation serverInfo;
+
   /// Emits an event any time the server notifies us of a change to the list of
   /// prompts it supports.
   ///
@@ -157,13 +164,20 @@ base class ServerConnection extends MCPBase {
   ServerConnection.fromStreamChannel(
     StreamChannel<String> channel, {
     RootsSupport? rootsSupport,
+    SamplingSupport? samplingSupport,
   }) : super(Peer(channel)) {
-    registerRequestHandler(PingRequest.methodName, _handlePing);
-
     if (rootsSupport != null) {
       registerRequestHandler(
         ListRootsRequest.methodName,
         rootsSupport.handleListRoots,
+      );
+    }
+
+    if (samplingSupport != null) {
+      registerRequestHandler(
+        CreateMessageRequest.methodName,
+        (CreateMessageRequest request) =>
+            samplingSupport.handleCreateMessage(request, serverInfo),
       );
     }
 
@@ -214,30 +228,14 @@ base class ServerConnection extends MCPBase {
   ///
   /// The client must call [notifyInitialized] after receiving and accepting
   /// this response.
-  Future<InitializeResult> initialize(InitializeRequest request) =>
-      sendRequest(InitializeRequest.methodName, request);
-
-  /// Pings the server, and returns whether or not it responded within
-  /// [timeout].
-  ///
-  /// The returned future completes after one of the following:
-  ///
-  ///   - The server responds (returns `true`).
-  ///   - The [timeout] is exceeded (returns `false`).
-  ///
-  /// If the timeout is reached, future values or errors from the ping request
-  /// are ignored.
-  Future<bool> ping(
-    PingRequest request, {
-    Duration timeout = const Duration(seconds: 1),
-  }) => sendRequest<EmptyResult>(
-    PingRequest.methodName,
-    request,
-  ).then((_) => true).timeout(timeout, onTimeout: () => false);
-
-  /// The server may ping us at any time, and we should respond with an empty
-  /// response.
-  EmptyResult _handlePing(PingRequest request) => EmptyResult();
+  Future<InitializeResult> initialize(InitializeRequest request) async {
+    final response = await sendRequest<InitializeResult>(
+      InitializeRequest.methodName,
+      request,
+    );
+    serverInfo = response.serverInfo;
+    return response;
+  }
 
   /// List all the tools from this server.
   Future<ListToolsResult> listTools(ListToolsRequest request) =>

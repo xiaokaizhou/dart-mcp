@@ -55,8 +55,6 @@ abstract base class MCPServer extends MCPBase {
 
   MCPServer.fromStreamChannel(StreamChannel<String> channel)
     : super(Peer(channel)) {
-    registerRequestHandler(PingRequest.methodName, handlePing);
-
     registerRequestHandler(InitializeRequest.methodName, initialize);
 
     registerNotificationHandler(
@@ -101,29 +99,13 @@ abstract base class MCPServer extends MCPBase {
     _initialized.complete();
   }
 
-  /// The client may ping us at any time, and we should respond with an empty
-  /// response.
-  FutureOr<EmptyResult> handlePing(PingRequest request) => EmptyResult();
-
-  /// Pings the client, and returns whether or not it responded within
-  /// [timeout].
-  ///
-  /// The returned future completes after one of the following:
-  ///
-  ///   - The client responds (returns `true`).
-  ///   - The [timeout] is exceeded completes (returns `false`).
-  ///
-  /// If the timeout is reached, future values or errors from the ping request
-  /// are ignored.
-  Future<bool> ping(
-    PingRequest request, {
-    Duration timeout = const Duration(seconds: 1),
-  }) => sendRequest(
-    PingRequest.methodName,
-    request,
-  ).then((_) => true).timeout(timeout, onTimeout: () => false);
-
   /// Lists all the root URIs from the client.
   Future<ListRootsResult> listRoots(ListRootsRequest request) =>
       sendRequest(ListRootsRequest.methodName, request);
+
+  /// A request to prompt the LLM owned by the client with a message.
+  ///
+  /// See https://spec.modelcontextprotocol.io/specification/2024-11-05/client/sampling/.
+  Future<CreateMessageResult> createMessage(CreateMessageRequest request) =>
+      sendRequest(CreateMessageRequest.methodName, request);
 }
