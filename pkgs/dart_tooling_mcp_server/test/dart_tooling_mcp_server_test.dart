@@ -42,6 +42,29 @@ void main() {
     });
   });
 
+  test('can perform a hot reload', () async {
+    await testHarness.connectToDtd();
+
+    await testHarness.startDebugSession(
+      counterAppPath,
+      'lib/main.dart',
+      isFlutter: true,
+    );
+
+    final tools = (await testHarness.mcpServerConnection.listTools()).tools;
+    final hotReloadTool = tools.singleWhere(
+      (t) => t.name == DartToolingDaemonSupport.hotReloadTool.name,
+    );
+    final hotReloadResult = await testHarness.callToolWithRetry(
+      CallToolRequest(name: hotReloadTool.name),
+    );
+
+    expect(hotReloadResult.isError, isNot(true));
+    expect(hotReloadResult.content, [
+      TextContent(text: 'Hot reload succeeded.'),
+    ]);
+  });
+
   group('analysis', () {
     late Tool analyzeTool;
 
@@ -102,8 +125,7 @@ void main() {
       expect(result.isError, isNot(true));
       expect(result.content, [
         TextContent(
-          text:
-              "Error: The argument type 'String' can't be assigned to the "
+          text: "Error: The argument type 'String' can't be assigned to the "
               "parameter type 'num'. ",
         ),
       ]);

@@ -8,6 +8,7 @@ import 'package:dart_mcp/server.dart';
 import 'package:dtd/dtd.dart';
 import 'package:json_rpc_2/json_rpc_2.dart';
 import 'package:meta/meta.dart';
+import 'package:vm_service/vm_service.dart';
 import 'package:vm_service/vm_service_io.dart';
 
 /// Mix this in to any MCPServer to add support for connecting to the Dart
@@ -31,7 +32,12 @@ base mixin DartToolingDaemonSupport on ToolsSupport {
   @override
   FutureOr<InitializeResult> initialize(InitializeRequest request) async {
     registerTool(connectTool, _connect);
+    // TODO: these tools should only be registered for Flutter applications, or
+    // they should return an error when used against a pure Dart app (or a
+    // Flutter app that does not support the operation, e.g. hot reload is not
+    // supported in profile mode).
     registerTool(screenshotTool, takeScreenshot);
+    registerTool(hotReloadTool, hotReload);
     return super.initialize(request);
   }
 
@@ -98,6 +104,107 @@ base mixin DartToolingDaemonSupport on ToolsSupport {
   // TODO: support passing a debug session id when there is more than one debug
   // session.
   Future<CallToolResult> takeScreenshot(CallToolRequest request) async {
+    return _callOnVmService(
+      callback: (vmService) async {
+        final vm = await vmService.getVM();
+        final result = await vmService.callServiceExtension(
+          '_flutter.screenshot',
+          isolateId: vm.isolates!.first.id,
+        );
+        if (result.json?['type'] == 'Screenshot' &&
+            result.json?['screenshot'] is String) {
+          return CallToolResult(
+            content: [
+              ImageContent(
+                data: result.json!['screenshot'] as String,
+                mimeType: 'image/png',
+              ),
+            ],
+          );
+        } else {
+          return CallToolResult(
+            isError: true,
+            content: [
+              TextContent(
+                text: 'Unknown error or bad response taking screenshot:\n'
+                    '${result.json}',
+              ),
+            ],
+          );
+        }
+      },
+    );
+  }
+
+  /// Performs a hot reload on the currently running app.
+  ///
+  /// If more than one debug session is active, then it just uses the first one.
+  ///
+  // TODO: support passing a debug session id when there is more than one debug
+  // session.
+  Future<CallToolResult> hotReload(CallToolRequest request) async {
+    return _callOnVmService(
+      callback: (vmService) async {
+        final vm = await vmService.getVM();
+
+        final hotReloadMethodNameCompleter = Completer<String?>();
+        vmService.onEvent(EventStreams.kService).listen((Event e) {
+          if (e.kind == EventKind.kServiceRegistered) {
+            final serviceName = e.service!;
+            if (serviceName == 'reloadSources') {
+              // This may look something like 's0.reloadSources'.
+              hotReloadMethodNameCompleter.complete(e.method);
+            }
+          }
+        });
+        await vmService.streamListen(EventStreams.kService);
+        final hotReloadMethodName = await hotReloadMethodNameCompleter.future
+            .timeout(const Duration(milliseconds: 1000), onTimeout: () async {
+          return null;
+        });
+        await vmService.streamCancel(EventStreams.kService);
+
+        if (hotReloadMethodName == null) {
+          return CallToolResult(
+            isError: true,
+            content: [
+              TextContent(
+                text: 'The hot reload service has not been registered yet, '
+                    'please wait a few seconds and try again.',
+              ),
+            ],
+          );
+        }
+
+        final result = await vmService.callMethod(
+          hotReloadMethodName,
+          isolateId: vm.isolates!.first.id,
+        );
+        final resultType = result.json?['type'];
+        if (resultType == 'Success' ||
+            (resultType == 'ReloadReport' && result.json?['success'] == true)) {
+          return CallToolResult(
+            content: [TextContent(text: 'Hot reload succeeded.')],
+          );
+        } else {
+          return CallToolResult(
+            isError: true,
+            content: [
+              TextContent(
+                text: 'Hot reload failed:\n'
+                    '${result.json}',
+              ),
+            ],
+          );
+        }
+      },
+    );
+  }
+
+  /// Calls [callback] on the first active debug session, if available.
+  Future<CallToolResult> _callOnVmService({
+    required Future<CallToolResult> Function(VmService) callback,
+  }) async {
     final dtd = _dtd;
     if (dtd == null) return _dtdNotConnected;
     if (!_getDebugSessionsReady) {
@@ -111,38 +218,10 @@ base mixin DartToolingDaemonSupport on ToolsSupport {
     if (debugSessions.isEmpty) return _noActiveDebugSession;
 
     // TODO: Consider holding on to this connection.
-    final vmService = await vmServiceConnectUri(
-      debugSessions.first.vmServiceUri,
-    );
-
+    final vmService =
+        await vmServiceConnectUri(debugSessions.first.vmServiceUri);
     try {
-      final vm = await vmService.getVM();
-      final result = await vmService.callServiceExtension(
-        '_flutter.screenshot',
-        isolateId: vm.isolates!.first.id,
-      );
-      if (result.json?['type'] == 'Screenshot' &&
-          result.json?['screenshot'] is String) {
-        return CallToolResult(
-          content: [
-            ImageContent(
-              data: result.json!['screenshot'] as String,
-              mimeType: 'image/png',
-            ),
-          ],
-        );
-      } else {
-        return CallToolResult(
-          isError: true,
-          content: [
-            TextContent(
-              text:
-                  'Unknown error or bad response taking screenshot:\n'
-                  '${result.json}',
-            ),
-          ],
-        );
-      }
+      return await callback(vmService);
     } finally {
       unawaited(vmService.dispose());
     }
@@ -163,11 +242,19 @@ base mixin DartToolingDaemonSupport on ToolsSupport {
 
   @visibleForTesting
   static final screenshotTool = Tool(
-    name: 'take_screenshot',
-    description:
-        'Takes a screenshot of the active flutter application in its '
+    name: 'takeScreenshot',
+    description: 'Takes a screenshot of the active flutter application in its '
         'current state. Requires "${connectTool.name}" to be successfully '
         'called first.',
+    inputSchema: ObjectSchema(),
+  );
+
+  @visibleForTesting
+  static final hotReloadTool = Tool(
+    name: 'hotReload',
+    description: 'Performs a hot reload of the active Flutter application. '
+        'This is to apply the latest code changes to the running application. '
+        'Requires "${connectTool.name}" to be successfully called first.',
     inputSchema: ObjectSchema(),
   );
 
@@ -175,8 +262,7 @@ base mixin DartToolingDaemonSupport on ToolsSupport {
     isError: true,
     content: [
       TextContent(
-        text:
-            'The dart tooling daemon is not connected, you need to call '
+        text: 'The dart tooling daemon is not connected, you need to call '
             '"${connectTool.name}" first.',
       ),
     ],
@@ -186,8 +272,7 @@ base mixin DartToolingDaemonSupport on ToolsSupport {
     isError: true,
     content: [
       TextContent(
-        text:
-            'The dart tooling daemon is already connected, you cannot call '
+        text: 'The dart tooling daemon is already connected, you cannot call '
             '"${connectTool.name}" again.',
       ),
     ],
@@ -204,8 +289,7 @@ base mixin DartToolingDaemonSupport on ToolsSupport {
     isError: true,
     content: [
       TextContent(
-        text:
-            'The dart tooling daemon is not ready yet, please wait a few '
+        text: 'The dart tooling daemon is not ready yet, please wait a few '
             'seconds and try again.',
       ),
     ],
@@ -266,10 +350,11 @@ extension type GetDebugSessionsResponse.fromJson(Map<String, Object?> _value)
 
   factory GetDebugSessionsResponse({
     required List<DebugSession> debugSessions,
-  }) => GetDebugSessionsResponse.fromJson({
-    'debugSessions': debugSessions,
-    'type': type,
-  });
+  }) =>
+      GetDebugSessionsResponse.fromJson({
+        'debugSessions': debugSessions,
+        'type': type,
+      });
 }
 
 /// An individual debug session.
@@ -290,11 +375,12 @@ extension type DebugSession.fromJson(Map<String, Object?> _value)
     required String name,
     required String projectRootPath,
     required String vmServiceUri,
-  }) => DebugSession.fromJson({
-    'debuggerType': debuggerType,
-    'id': id,
-    'name': name,
-    'projectRootPath': projectRootPath,
-    'vmServiceUri': vmServiceUri,
-  });
+  }) =>
+      DebugSession.fromJson({
+        'debuggerType': debuggerType,
+        'id': id,
+        'name': name,
+        'projectRootPath': projectRootPath,
+        'vmServiceUri': vmServiceUri,
+      });
 }
