@@ -115,7 +115,8 @@ base mixin DartAnalyzerSupport on ToolsSupport, LoggingSupport {
       return CallToolResult(
         content: [
           TextContent(
-            text: 'Analysis not yet ready, please wait a few seconds and try '
+            text:
+                'Analysis not yet ready, please wait a few seconds and try '
                 'again.',
           ),
         ],
@@ -132,7 +133,8 @@ base mixin DartAnalyzerSupport on ToolsSupport, LoggingSupport {
         return CallToolResult(
           content: [
             TextContent(
-              text: 'Only file scheme uris are allowed for roots, but got '
+              text:
+                  'Only file scheme uris are allowed for roots, but got '
                   '$rootUri',
             ),
           ],
@@ -184,7 +186,7 @@ base mixin DartAnalyzerSupport on ToolsSupport, LoggingSupport {
 
   @visibleForTesting
   static final analyzeFilesTool = Tool(
-    name: 'analyze files',
+    name: 'analyzeFiles',
     description:
         'Analyzes the requested file paths under the specified project roots '
         'and returns the results as a list of messages.',
@@ -200,7 +202,8 @@ base mixin DartAnalyzerSupport on ToolsSupport, LoggingSupport {
                 title: 'The URI of the project root to analyze.',
               ),
               'paths': ListSchema(
-                title: 'Relative or absolute paths to analyze under the '
+                title:
+                    'Relative or absolute paths to analyze under the '
                     '"root", must correspond to files and not directories.',
                 items: StringSchema(),
               ),
