@@ -10,6 +10,7 @@ import 'package:dart_mcp/client.dart';
 import 'package:dart_tooling_mcp_server/src/mixins/dtd.dart';
 import 'package:dart_tooling_mcp_server/src/server.dart';
 import 'package:dtd/dtd.dart';
+import 'package:path/path.dart' as p;
 import 'package:stream_channel/stream_channel.dart';
 import 'package:test/test.dart';
 import 'package:test_descriptor/test_descriptor.dart' as d;
@@ -350,4 +351,6 @@ Future<ServerConnection> _initializeMCPServer(
 Root rootForPath(String projectPath) =>
     Root(uri: Directory(projectPath).absolute.uri.toString());
 
-const counterAppPath = 'test_fixtures/counter_app';
+final counterAppPath = p.join('test_fixtures', 'counter_app');
+
+final dartCliAppsPath = p.join('test_fixtures', 'dart_cli_app');
