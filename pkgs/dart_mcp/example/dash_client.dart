@@ -25,15 +25,25 @@ void main(List<String> args) {
 
   final parsedArgs = argParser.parse(args);
   final serverCommands = parsedArgs['server'] as List<String>;
-  DashClient(serverCommands, geminiApiKey: geminiApiKey);
+  DashClient(
+    serverCommands,
+    geminiApiKey: geminiApiKey,
+    verbose: parsedArgs['verbose'] == true,
+  );
 }
 
 final argParser =
-    ArgParser()..addMultiOption(
-      'server',
-      abbr: 's',
-      help: 'A command to run to start an MCP server',
-    );
+    ArgParser()
+      ..addMultiOption(
+        'server',
+        abbr: 's',
+        help: 'A command to run to start an MCP server',
+      )
+      ..addOption(
+        'verbose',
+        abbr: 'v',
+        help: 'Enables verbose logging for logs from servers.',
+      );
 
 final class DashClient extends MCPClient with RootsSupport {
   final StreamQueue<String> stdinQueue;
@@ -42,20 +52,24 @@ final class DashClient extends MCPClient with RootsSupport {
   final Map<String, ServerConnection> connectionForFunction = {};
   final List<gemini.Content> chatHistory = [];
   final gemini.GenerativeModel model;
+  final bool verbose;
 
-  DashClient(this.serverCommands, {required String geminiApiKey})
-    : model = gemini.GenerativeModel(
-        // model: 'gemini-2.5-pro-exp-03-25',
-        model: 'gemini-2.0-flash',
-        apiKey: geminiApiKey,
-        systemInstruction: systemInstructions,
-      ),
-      stdinQueue = StreamQueue(
-        stdin.transform(utf8.decoder).transform(const LineSplitter()),
-      ),
-      super(
-        ClientImplementation(name: 'Example gemini client', version: '0.1.0'),
-      ) {
+  DashClient(
+    this.serverCommands, {
+    required String geminiApiKey,
+    this.verbose = false,
+  }) : model = gemini.GenerativeModel(
+         // model: 'gemini-2.5-pro-exp-03-25',
+         model: 'gemini-2.0-flash',
+         apiKey: geminiApiKey,
+         systemInstruction: systemInstructions,
+       ),
+       stdinQueue = StreamQueue(
+         stdin.transform(utf8.decoder).transform(const LineSplitter()),
+       ),
+       super(
+         ClientImplementation(name: 'Example gemini client', version: '0.1.0'),
+       ) {
     addRoot(
       Root(
         uri: Directory.current.absolute.uri.toString(),
@@ -71,6 +85,7 @@ final class DashClient extends MCPClient with RootsSupport {
       await _connectToServers();
     }
     await _initializeServers();
+    _listenToLogs();
     final serverTools = await _listServerCapabilities();
 
     // If assigned then it is used as the next input from the user
@@ -144,7 +159,7 @@ final class DashClient extends MCPClient with RootsSupport {
           response.writeln(content.text);
         case final ImageContent content when content.isImage:
           chatHistory.add(
-            gemini.Content.data('image/png', base64Decode(content.data)),
+            gemini.Content.data(content.mimeType, base64Decode(content.data)),
           );
           response.writeln('Image added to context');
         default:
@@ -224,6 +239,27 @@ final class DashClient extends MCPClient with RootsSupport {
       } else {
         connection.notifyInitialized(InitializedNotification());
       }
+    }
+  }
+
+  /// Listens for log messages on all [serverConnections] that support logging.
+  void _listenToLogs() {
+    for (var connection in serverConnections) {
+      if (connection.serverCapabilities.logging == null) {
+        continue;
+      }
+
+      connection.setLogLevel(
+        SetLevelRequest(
+          level: verbose ? LoggingLevel.debug : LoggingLevel.warning,
+        ),
+      );
+      connection.onLog.listen((event) {
+        print(
+          'Server Log(${event.level.name}): '
+          '${event.logger != null ? '[${event.logger}] ' : ''}${event.data}',
+        );
+      });
     }
   }
 
@@ -321,7 +357,11 @@ final class DashChatBotServer extends MCPServer with ToolsSupport {
 
     registerTool(removeImagesTool, (_) async {
       final oldLength = client.chatHistory.length;
-      client.chatHistory.removeWhere((content) => content is ImageContent);
+      // TODO: Something more robust than this, maybe just remove them by object
+      // reference.
+      client.chatHistory.removeWhere(
+        (content) => content.parts.first is gemini.DataPart,
+      );
       return CallToolResult(
         content: [
           TextContent(
