@@ -76,7 +76,9 @@ base class MCPClient {
             },
           ),
         );
-    return connectServer(channel);
+    final connection = connectServer(channel);
+    unawaited(connection.done.then((_) => process.kill()));
+    return connection;
   }
 
   /// Returns a connection for an MCP server using a [channel], which is already
@@ -107,6 +109,12 @@ base class MCPClient {
 
 /// An active server connection.
 base class ServerConnection extends MCPBase {
+  /// The version of the protocol that was negotiated during intialization.
+  ///
+  /// Some APIs may error if you attempt to use them without first checking the
+  /// protocol version.
+  late ProtocolVersion protocolVersion;
+
   /// The [ServerImplementation] returned from the [initialize] request.
   ///
   /// Only assigned after [initialize] has successfully completed.
@@ -164,6 +172,10 @@ base class ServerConnection extends MCPBase {
   Stream<LoggingMessageNotification> get onLog => _logController.stream;
   final _logController =
       StreamController<LoggingMessageNotification>.broadcast();
+
+  /// Completes when [shutdown] is called.
+  Future<void> get done => _done.future;
+  final Completer<void> _done = Completer<void>();
 
   /// A 1:1 connection from a client to a server using [channel].
   ///
@@ -229,6 +241,7 @@ base class ServerConnection extends MCPBase {
       _resourceUpdatedController.close(),
       _logController.close(),
     ]);
+    _done.complete();
   }
 
   /// Called after a successful call to [initialize].
@@ -246,6 +259,10 @@ base class ServerConnection extends MCPBase {
     );
     serverInfo = response.serverInfo;
     serverCapabilities = response.capabilities;
+    final serverVersion = response.protocolVersion;
+    if (serverVersion?.isSupported != true) {
+      await shutdown();
+    }
     return response;
   }
 
@@ -302,6 +319,8 @@ base class ServerConnection extends MCPBase {
   /// Clients should debounce their calls to this API to avoid overloading the
   /// server.
   ///
+  /// You should check the [protocolVersion] before using this API, it must be
+  /// >= [ProtocolVersion.v2025_03_26].
   // TODO: Implement automatic debouncing.
   Future<CompleteResult> requestCompletions(CompleteRequest request) =>
       sendRequest(CompleteRequest.methodName, request);
