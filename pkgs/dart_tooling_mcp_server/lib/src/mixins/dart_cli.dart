@@ -21,11 +21,6 @@ base mixin DartCliSupport on ToolsSupport, LoggingSupport
     implements ProcessManagerSupport {
   @override
   FutureOr<InitializeResult> initialize(InitializeRequest request) {
-    if (request.capabilities.roots == null) {
-      throw StateError(
-        'This server requires the "roots" capability to be implemented.',
-      );
-    }
     registerTool(dartFixTool, _runDartFixTool);
     registerTool(dartFormatTool, _runDartFormatTool);
     return super.initialize(request);
