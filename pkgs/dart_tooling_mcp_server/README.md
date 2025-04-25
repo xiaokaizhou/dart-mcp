@@ -27,6 +27,15 @@ add the `--auto` flag.
 - If you want the client to output the raw LLM responses to the CLI instead of
 re-writing responses in the tone of Dash, add the `--raw` flag.
 
+### With the example WorkflowBot
+
+After compiling the binary, you can run the example dash chat bot to interact
+with it, from the root of this package, after compiling the binary, run:
+
+```dart
+dart ../dart_mcp/example/workflow_client.dart --server bin/main.exe
+```
+
 ### With Cursor
 
 Go to Cursor -> Settings -> Cursor Settings and select "MCP".
