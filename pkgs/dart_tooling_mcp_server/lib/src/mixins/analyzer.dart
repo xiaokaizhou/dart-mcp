@@ -332,6 +332,7 @@ base mixin DartAnalyzerSupport on ToolsSupport, LoggingSupport {
     name: 'analyze_files',
     description: 'Analyzes the entire project for errors.',
     inputSchema: Schema.object(),
+    annotations: ToolAnnotations(title: 'Analyze projects', readOnlyHint: true),
   );
 
   @visibleForTesting
