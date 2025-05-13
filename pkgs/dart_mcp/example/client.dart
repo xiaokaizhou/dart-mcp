@@ -24,10 +24,12 @@ void main() async {
     ),
   );
   print('initialized: $initializeResult');
-  if (initializeResult.protocolVersion != ProtocolVersion.latestSupported) {
+  if (!initializeResult.protocolVersion!.isSupported) {
     throw StateError(
-      'Protocol version mismatch, expected ${ProtocolVersion.latestSupported}, '
-      'got ${initializeResult.protocolVersion}',
+      'Protocol version mismatch, expected a version between '
+      '${ProtocolVersion.oldestSupported} and '
+      '${ProtocolVersion.latestSupported}, but received '
+      '${initializeResult.protocolVersion}',
     );
   }
 
