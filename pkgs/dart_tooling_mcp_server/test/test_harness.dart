@@ -196,7 +196,7 @@ final class AppDebugSession {
     final process = await TestProcess.start(isFlutter ? 'flutter' : 'dart', [
       'run',
       '--no${isFlutter ? '' : '-serve'}-devtools',
-      if (!isFlutter) '--enable-vm-service',
+      if (!isFlutter) '--enable-vm-service=0',
       if (isFlutter) ...['-d', 'flutter-tester'],
       appPath,
       ...args,
@@ -210,7 +210,9 @@ final class AppDebugSession {
     final stdout = StreamQueue(process.stdoutStream());
     while (vmServiceUri == null && await stdout.hasNext) {
       final line = await stdout.next;
-      if (line.contains('A Dart VM Service')) {
+      final serviceString =
+          isFlutter ? 'A Dart VM Service' : 'The Dart VM service';
+      if (line.contains(serviceString)) {
         vmServiceUri = line
             .substring(line.indexOf('http:'))
             .replaceFirst('http:', 'ws:');
@@ -219,7 +221,8 @@ final class AppDebugSession {
     }
     if (vmServiceUri == null) {
       throw StateError(
-        'Failed to read vm service URI from the flutter run output',
+        'Failed to read vm service URI from the '
+        '`${isFlutter ? 'flutter' : 'dart'} run` output',
       );
     }
     return AppDebugSession._(
@@ -235,10 +238,11 @@ final class AppDebugSession {
   static Future<void> kill(TestProcess process, bool isFlutter) async {
     if (isFlutter) {
       process.stdin.writeln('q');
+      await process.shouldExit(0);
     } else {
       unawaited(process.kill());
+      await process.shouldExit(anyOf(0, -9));
     }
-    await process.shouldExit(0);
   }
 
   /// Returns this as the Editor service representation.
