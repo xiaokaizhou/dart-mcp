@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:dart_mcp/server.dart';
+import 'package:path/path.dart' as p;
 
 import '../utils/cli_utils.dart';
 import '../utils/constants.dart';
@@ -28,6 +29,7 @@ base mixin DashCliSupport on ToolsSupport, LoggingSupport, RootsTrackingSupport
         registerTool(dartFixTool, _runDartFixTool);
         registerTool(dartFormatTool, _runDartFormatTool);
         registerTool(runTestsTool, _runTests);
+        registerTool(createProjectTool, _runCreateProjectTool);
       }
     }
   }
@@ -71,6 +73,60 @@ base mixin DashCliSupport on ToolsSupport, LoggingSupport, RootsTrackingSupport
     );
   }
 
+  /// Implementation of the [createProjectTool].
+  Future<CallToolResult> _runCreateProjectTool(CallToolRequest request) async {
+    final args = request.arguments;
+
+    final errors = createProjectTool.inputSchema.validate(args);
+    final projectType = args?[ParameterNames.projectType] as String?;
+    if (projectType != 'dart' && projectType != 'flutter') {
+      errors.add(
+        ValidationError(
+          ValidationErrorType.itemInvalid,
+          path: [ParameterNames.projectType],
+          details: 'Only `dart` and `flutter` are allowed values.',
+        ),
+      );
+    }
+    final directory = args![ParameterNames.directory] as String;
+    if (p.isAbsolute(directory)) {
+      errors.add(
+        ValidationError(
+          ValidationErrorType.itemInvalid,
+          path: [ParameterNames.directory],
+          details: 'Directory must be a relative path.',
+        ),
+      );
+    }
+
+    if (errors.isNotEmpty) {
+      return CallToolResult(
+        content: [
+          for (final error in errors) Content.text(text: error.toErrorString()),
+        ],
+        isError: true,
+      );
+    }
+
+    final template = args[ParameterNames.template] as String?;
+
+    final commandArgs = [
+      'create',
+      if (template != null && template.isNotEmpty) ...['--template', template],
+      directory,
+    ];
+
+    return runCommandInRoot(
+      request,
+      arguments: commandArgs,
+      commandForRoot: (_, _) => projectType!,
+      commandDescription: '$projectType create',
+      fileSystem: fileSystem,
+      processManager: processManager,
+      knownRoots: await roots,
+    );
+  }
+
   static final dartFixTool = Tool(
     name: 'dart_fix',
     description: 'Runs `dart fix --apply` for the given project roots.',
@@ -95,6 +151,33 @@ base mixin DashCliSupport on ToolsSupport, LoggingSupport, RootsTrackingSupport
     annotations: ToolAnnotations(title: 'Run tests', readOnlyHint: true),
     inputSchema: Schema.object(
       properties: {ParameterNames.roots: rootsSchema(supportsPaths: true)},
+    ),
+  );
+
+  static final createProjectTool = Tool(
+    name: 'create_project',
+    description: 'Creates a new Dart or Flutter project.',
+    annotations: ToolAnnotations(
+      title: 'Create project',
+      destructiveHint: true,
+    ),
+    inputSchema: Schema.object(
+      properties: {
+        ParameterNames.root: rootSchema,
+        ParameterNames.directory: Schema.string(
+          description:
+              'The subdirectory in which to create the project, must '
+              'be a relative path.',
+        ),
+        ParameterNames.projectType: Schema.string(
+          description: "The type of project: 'dart' or 'flutter'.",
+        ),
+        ParameterNames.template: Schema.string(
+          description:
+              'The project template to use (e.g., "console-full", "app").',
+        ),
+      },
+      required: [ParameterNames.directory, ParameterNames.projectType],
     ),
   );
 }
