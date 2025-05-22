@@ -109,12 +109,14 @@ base mixin DartToolingDaemonSupport
         final resource = Resource(
           uri: '$runtimeErrorsScheme://${debugSession.id}',
           name: debugSession.name,
+          description:
+              'Recent runtime errors seen for debug session '
+              '"${debugSession.name}".',
         );
         addResource(resource, (request) async {
-          final errors = errorService.errors;
           return ReadResourceResult(
             contents: [
-              for (var error in errors)
+              for (var error in errorService.errorLog.errors)
                 TextResourceContents(uri: resource.uri, text: error),
             ],
           );
@@ -294,7 +296,7 @@ base mixin DartToolingDaemonSupport
           (await _AppErrorsListener.forVmService(
             vmService,
             this,
-          )).errors.clear();
+          )).errorLog.clear();
         }
 
         final vm = await vmService.getVM();
@@ -372,9 +374,9 @@ base mixin DartToolingDaemonSupport
             vmService,
             this,
           );
-          final errors = errorService.errors;
+          final errorLog = errorService.errorLog;
 
-          if (errors.isEmpty) {
+          if (errorLog.errors.isEmpty) {
             return CallToolResult(
               content: [TextContent(text: 'No runtime errors found.')],
             );
@@ -383,14 +385,14 @@ base mixin DartToolingDaemonSupport
             content: [
               TextContent(
                 text:
-                    'Found ${errors.length} '
-                    'error${errors.length == 1 ? '' : 's'}:\n',
+                    'Found ${errorLog.errors.length} '
+                    'error${errorLog.errors.length == 1 ? '' : 's'}:\n',
               ),
-              ...errors.map((e) => TextContent(text: e.toString())),
+              for (final e in errorLog.errors) TextContent(text: e.toString()),
             ],
           );
           if (request.arguments?['clearRuntimeErrors'] == true) {
-            errorService.errors.clear();
+            errorService.errorLog.clear();
           }
           return result;
         } catch (e) {
@@ -614,9 +616,9 @@ base mixin DartToolingDaemonSupport
   static final getRuntimeErrorsTool = Tool(
     name: 'get_runtime_errors',
     description:
-        'Retrieves the list of runtime errors that have occurred in the active '
-        'Dart or Flutter application. Requires "${connectTool.name}" to be '
-        'successfully called first.',
+        'Retrieves the most recent runtime errors that have occurred in the '
+        'active Dart or Flutter application. Requires "${connectTool.name}" to '
+        'be successfully called first.',
     annotations: ToolAnnotations(
       title: 'Get runtime errors',
       readOnlyHint: true,
@@ -767,7 +769,7 @@ base mixin DartToolingDaemonSupport
 /// Listens on a VM service for errors.
 class _AppErrorsListener {
   /// All the errors recorded so far (may be cleared explicitly).
-  final List<String> errors;
+  final ErrorLog errorLog;
 
   /// A broadcast stream of all errors that come in after you start listening.
   Stream<String> get errorsStream => _errorsController.stream;
@@ -785,7 +787,7 @@ class _AppErrorsListener {
   final VmService _vmService;
 
   _AppErrorsListener._(
-    this.errors,
+    this.errorLog,
     this._errorsController,
     this._extensionEventsListener,
     this._stderrEventsListener,
@@ -809,8 +811,8 @@ class _AppErrorsListener {
       // list but also expose it to clients so they can know when new errors
       // are added.
       final errorsController = StreamController<String>.broadcast();
-      final errors = <String>[];
-      errorsController.stream.listen(errors.add);
+      final errorLog = ErrorLog();
+      errorsController.stream.listen(errorLog.add);
       // We need to listen to streams with history so that we can get errors
       // that occurred before this tool call.
       // TODO(https://github.com/dart-lang/ai/issues/57): this can result in
@@ -849,7 +851,7 @@ class _AppErrorsListener {
         logger.log(LoggingLevel.error, 'Error subscribing to app errors: $e');
       }
       return _AppErrorsListener._(
-        errors,
+        errorLog,
         errorsController,
         extensionEvents,
         stderrEvents,
@@ -859,7 +861,7 @@ class _AppErrorsListener {
   }
 
   Future<void> shutdown() async {
-    errors.clear();
+    errorLog.clear();
     await _errorsController.close();
     await _extensionEventsListener.cancel();
     await _stderrEventsListener.cancel();
@@ -957,4 +959,53 @@ extension type DebugSession.fromJson(Map<String, Object?> _value)
     'projectRootPath': projectRootPath,
     if (vmServiceUri != null) 'vmServiceUri': vmServiceUri,
   });
+}
+
+/// Manages a log of errors with a maximum size in terms of total characters.
+@visibleForTesting
+class ErrorLog {
+  Iterable<String> get errors => _errors;
+  final List<String> _errors = [];
+  int _characters = 0;
+
+  /// The number of characters used by all errors in the log.
+  @visibleForTesting
+  int get characters => _characters;
+
+  final int _maxSize;
+
+  ErrorLog({
+    // One token is ~4 characters. Allow up to 5k tokens by default, so 20k
+    // characters.
+    int maxSize = 20000,
+  }) : _maxSize = maxSize;
+
+  /// Adds a new [error] to the log.
+  void add(String error) {
+    if (error.length > _maxSize) {
+      // If we get a single error over the max size, just trim it and clear
+      // all other errors.
+      final trimmed = error.substring(0, _maxSize);
+      _errors.clear();
+      _characters = trimmed.length;
+      _errors.add(trimmed);
+    } else {
+      // Otherwise, we append the error and then remove as many errors from the
+      // front as we need to in order to get under the max size.
+      _characters += error.length;
+      _errors.add(error);
+      var removeCount = 0;
+      while (_characters > _maxSize) {
+        _characters -= _errors[removeCount].length;
+        removeCount++;
+      }
+      _errors.removeRange(0, removeCount);
+    }
+  }
+
+  /// Clears all errors.
+  void clear() {
+    _characters = 0;
+    _errors.clear();
+  }
 }
