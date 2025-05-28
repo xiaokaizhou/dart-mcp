@@ -20,9 +20,14 @@ void main(List<String> args) async {
   }
 
   DartMCPServer? server;
-  await runZonedGuarded(
-    () async {
-      server = await DartMCPServer.connect(
+  final dartSdkPath =
+      parsedArgs.option(dartSdkOption) ?? io.Platform.environment['DART_SDK'];
+  final flutterSdkPath =
+      parsedArgs.option(flutterSdkOption) ??
+      io.Platform.environment['FLUTTER_SDK'];
+  runZonedGuarded(
+    () {
+      server = DartMCPServer(
         StreamChannel.withCloseGuarantee(io.stdin, io.stdout)
             .transform(StreamChannelTransformer.fromCodec(utf8))
             .transformStream(const LineSplitter())
@@ -34,6 +39,7 @@ void main(List<String> args) async {
               ),
             ),
         forceRootsFallback: parsedArgs.flag(forceRootsFallback),
+        sdk: Sdk.find(dartSdkPath: dartSdkPath, flutterSdkPath: flutterSdkPath),
       );
     },
     (e, s) {
@@ -65,6 +71,19 @@ void main(List<String> args) async {
 
 final argParser =
     ArgParser(allowTrailingOptions: false)
+      ..addOption(
+        dartSdkOption,
+        help:
+            'The path to the root of the desired Dart SDK. Defaults to the '
+            'DART_SDK environment variable.',
+      )
+      ..addOption(
+        flutterSdkOption,
+        help:
+            'The path to the root of the desired Flutter SDK. Defaults to '
+            'the FLUTTER_SDK environment variable, then searching up from the '
+            'Dart SDK.',
+      )
       ..addFlag(
         forceRootsFallback,
         negatable: true,
@@ -77,5 +96,7 @@ final argParser =
       )
       ..addFlag(help, abbr: 'h', help: 'Show usage text');
 
+const dartSdkOption = 'dart-sdk';
+const flutterSdkOption = 'flutter-sdk';
 const forceRootsFallback = 'force-roots-fallback';
 const help = 'help';
