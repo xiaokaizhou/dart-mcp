@@ -4,6 +4,7 @@
 
 import 'dart:async';
 
+import 'package:collection/collection.dart';
 import 'package:dart_mcp/server.dart';
 import 'package:file/file.dart';
 import 'package:path/path.dart' as p;
@@ -159,7 +160,9 @@ Future<CallToolResult> runCommandInRoot(
     );
   }
 
-  final root = _findRoot(rootUriString, knownRoots);
+  final root = knownRoots.firstWhereOrNull(
+    (root) => _isUnderRoot(root, rootUriString),
+  );
   if (root == null) {
     return CallToolResult(
       content: [
@@ -195,11 +198,7 @@ Future<CallToolResult> runCommandInRoot(
   final paths =
       (rootConfig?[ParameterNames.paths] as List?)?.cast<String>() ??
       defaultPaths;
-  final invalidPaths = paths.where((path) {
-    final resolvedPath = rootUri.resolve(path).toString();
-    return rootUriString != resolvedPath &&
-        !p.isWithin(rootUriString, resolvedPath);
-  });
+  final invalidPaths = paths.where((path) => !_isUnderRoot(root, path));
   if (invalidPaths.isNotEmpty) {
     return CallToolResult(
       content: [
@@ -263,17 +262,24 @@ Future<String> defaultCommandForRoot(
     ),
 };
 
-/// Returns whether or not [rootUri] is an allowed root, either exactly matching
-/// or under on of the [knownRoots].
-Root? _findRoot(String rootUri, List<Root> knownRoots) {
-  for (final root in knownRoots) {
-    final knownRootUri = Uri.parse(root.uri);
-    final resolvedRoot = knownRootUri.resolve(rootUri).toString();
-    if (root.uri == resolvedRoot || p.isWithin(root.uri, resolvedRoot)) {
-      return root;
-    }
+/// Returns whether [uri] is under or exactly equal to [root].
+///
+/// Relative uris will always be under [root] unless they escape it with `../`.
+bool _isUnderRoot(Root root, String uri) {
+  final rootUri = Uri.parse(root.uri);
+  final resolvedUri = rootUri.resolve(uri);
+  // We don't care about queries or fragments, but the scheme/authority must
+  // match.
+  if (rootUri.scheme != resolvedUri.scheme ||
+      rootUri.authority != resolvedUri.authority) {
+    return false;
   }
-  return null;
+  // Canonicalizing the paths handles any `../` segments and also deals with
+  // trailing slashes versus no trailing slashes.
+  final canonicalRootPath = p.canonicalize(rootUri.path);
+  final canonicalUriPath = p.canonicalize(resolvedUri.path);
+  return canonicalRootPath == canonicalUriPath ||
+      canonicalUriPath.startsWith(canonicalRootPath);
 }
 
 /// The schema for the `roots` parameter for any tool that accepts it.
