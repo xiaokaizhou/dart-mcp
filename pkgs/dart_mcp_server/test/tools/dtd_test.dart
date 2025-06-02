@@ -97,7 +97,7 @@ void main() {
         test('can perform a hot reload', () async {
           final exampleApp = await Directory.systemTemp.createTemp('dart_app');
           addTearDown(() async {
-            await exampleApp.delete(recursive: true);
+            await _deleteWithRetry(exampleApp);
           });
           final mainFile = File.fromUri(
             exampleApp.uri.resolve('bin/main.dart'),
@@ -165,7 +165,7 @@ void main() {
         setUp(() async {
           appDir = await Directory.systemTemp.createTemp('dart_app');
           addTearDown(() async {
-            await appDir.delete(recursive: true);
+            await _deleteWithRetry(appDir);
           });
           final mainFile = File.fromUri(appDir.uri.resolve(appPath));
           await mainFile.create(recursive: true);
@@ -306,7 +306,7 @@ void main() {
         setUp(() async {
           appDir = await Directory.systemTemp.createTemp('dart_app');
           addTearDown(() async {
-            await appDir.delete(recursive: true);
+            await _deleteWithRetry(appDir);
           });
           final mainFile = File.fromUri(appDir.uri.resolve(appPath));
           await mainFile.create(recursive: true);
@@ -396,89 +396,95 @@ void main() {
           );
         });
 
-        test('can be read and subscribed to as a resource', () async {
-          final serverConnection = testHarness.mcpServerConnection;
-          final onResourceListChanged =
-              serverConnection.resourceListChanged.first;
+        test(
+          'can be read and subscribed to as a resource',
+          () async {
+            final serverConnection = testHarness.mcpServerConnection;
+            final onResourceListChanged =
+                serverConnection.resourceListChanged.first;
 
-          final stdin = debugSession.appProcess.stdin;
-          stdin.writeln('');
-          var resources =
-              (await serverConnection.listResources(
-                ListResourcesRequest(),
-              )).resources;
-          if (resources.runtimeErrors.isEmpty) {
-            await onResourceListChanged;
-            resources =
+            final stdin = debugSession.appProcess.stdin;
+            stdin.writeln('');
+            var resources =
                 (await serverConnection.listResources(
                   ListResourcesRequest(),
                 )).resources;
-          }
-          final resource = resources.runtimeErrors.single;
+            if (resources.runtimeErrors.isEmpty) {
+              await onResourceListChanged;
+              resources =
+                  (await serverConnection.listResources(
+                    ListResourcesRequest(),
+                  )).resources;
+            }
+            final resource = resources.runtimeErrors.single;
 
-          final resourceUpdatedQueue = StreamQueue(
-            serverConnection.resourceUpdated,
-          );
-          await serverConnection.subscribeResource(
-            SubscribeRequest(uri: resource.uri),
-          );
-          var originalContents =
-              (await serverConnection.readResource(
-                ReadResourceRequest(uri: resource.uri),
-              )).contents;
-          final errorMatcher = isA<TextResourceContents>().having(
-            (c) => c.text,
-            'text',
-            contains('error!'),
-          );
-          // If we haven't seen errors initially, then listen for updates and
-          // re-read the resource.
-          if (originalContents.isEmpty) {
-            await resourceUpdatedQueue.next;
-            originalContents =
+            final resourceUpdatedQueue = StreamQueue(
+              serverConnection.resourceUpdated,
+            );
+            await serverConnection.subscribeResource(
+              SubscribeRequest(uri: resource.uri),
+            );
+            var originalContents =
                 (await serverConnection.readResource(
                   ReadResourceRequest(uri: resource.uri),
                 )).contents;
-          }
-          expect(
-            originalContents.length,
-            1,
-            reason: 'should have exactly one error, got $originalContents',
-          );
-          expect(originalContents.single, errorMatcher);
+            final errorMatcher = isA<TextResourceContents>().having(
+              (c) => c.text,
+              'text',
+              contains('error!'),
+            );
+            // If we haven't seen errors initially, then listen for updates and
+            // re-read the resource.
+            if (originalContents.isEmpty) {
+              await resourceUpdatedQueue.next;
+              originalContents =
+                  (await serverConnection.readResource(
+                    ReadResourceRequest(uri: resource.uri),
+                  )).contents;
+            }
+            expect(
+              originalContents.length,
+              1,
+              reason: 'should have exactly one error, got $originalContents',
+            );
+            expect(originalContents.single, errorMatcher);
 
-          stdin.writeln('');
-          expect(
-            await resourceUpdatedQueue.next,
-            isA<ResourceUpdatedNotification>().having(
-              (n) => n.uri,
-              ParameterNames.uri,
-              resource.uri,
-            ),
-          );
+            stdin.writeln('');
+            expect(
+              await resourceUpdatedQueue.next,
+              isA<ResourceUpdatedNotification>().having(
+                (n) => n.uri,
+                ParameterNames.uri,
+                resource.uri,
+              ),
+            );
 
-          // Should now have another error.
-          final newContents =
-              (await serverConnection.readResource(
-                ReadResourceRequest(uri: resource.uri),
-              )).contents;
-          expect(newContents.length, 2);
-          expect(newContents.last, errorMatcher);
+            // Should now have another error.
+            final newContents =
+                (await serverConnection.readResource(
+                  ReadResourceRequest(uri: resource.uri),
+                )).contents;
+            expect(newContents.length, 2);
+            expect(newContents.last, errorMatcher);
 
-          // Clear previous errors.
-          await testHarness.callToolWithRetry(
-            CallToolRequest(
-              name: DartToolingDaemonSupport.getRuntimeErrorsTool.name,
-              arguments: {'clearRuntimeErrors': true},
-            ),
-          );
+            // Clear previous errors.
+            await testHarness.callToolWithRetry(
+              CallToolRequest(
+                name: DartToolingDaemonSupport.getRuntimeErrorsTool.name,
+                arguments: {'clearRuntimeErrors': true},
+              ),
+            );
 
-          final finalContents =
-              (await serverConnection.readResource(
-                ReadResourceRequest(uri: resource.uri),
-              )).contents;
-          expect(finalContents, isEmpty);
-        });
+            final finalContents =
+                (await serverConnection.readResource(
+                  ReadResourceRequest(uri: resource.uri),
+                )).contents;
+            expect(finalContents, isEmpty);
+          },
+          onPlatform: {
+            'windows': const Skip('https://github.com/dart-lang/ai/issues/151'),
+          },
+        );
       });
 
       group('getActiveLocationTool', () {
@@ -659,3 +665,18 @@ void action() {
   print('hello');
 }
 ''';
+
+/// Tries to delete [dir] up to 5 times, waiting 200ms between each.
+///
+/// Necessary for windows tests.
+Future<void> _deleteWithRetry(Directory dir) async {
+  var i = 0;
+  while (++i <= 5) {
+    try {
+      await dir.delete(recursive: true);
+      return;
+    } catch (_) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+  }
+}

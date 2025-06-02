@@ -2,6 +2,9 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
+import 'dart:io' hide File;
+import 'dart:io' as io show File;
+
 import 'package:dart_mcp/server.dart';
 import 'package:dart_mcp_server/src/mixins/pub.dart';
 import 'package:dart_mcp_server/src/utils/constants.dart';
@@ -19,14 +22,25 @@ void main() {
   late Tool dartPubTool;
   late FileSystem fileSystem;
 
-  final fakeAppPath = '/fake_app/';
+  final fakeAppPath = io.File.fromUri(Uri.parse('/fake_app/')).path;
 
   for (final appKind in const ['dart', 'flutter']) {
+    final executableName =
+        '$appKind${Platform.isWindows
+            ? appKind == 'dart'
+                ? '.exe'
+                : '.bat'
+            : ''}';
     group('$appKind app', () {
       // TODO: Use setUpAll, currently this fails due to an apparent TestProcess
       // issue.
       setUp(() async {
-        fileSystem = MemoryFileSystem();
+        fileSystem = MemoryFileSystem(
+          style:
+              Platform.isWindows
+                  ? FileSystemStyle.windows
+                  : FileSystemStyle.posix,
+        );
         fileSystem.file(p.join(fakeAppPath, 'pubspec.yaml'))
           ..createSync(recursive: true)
           ..writeAsStringSync(
@@ -68,8 +82,8 @@ void main() {
           expect(result.isError, isNot(true));
           expect(testProcessManager.commandsRan, [
             equalsCommand((
-              command: [endsWith(appKind), 'pub', 'add', 'foo'],
-              workingDirectory: fakeAppPath,
+              command: [endsWith(executableName), 'pub', 'add', 'foo'],
+              workingDirectory: testRoot.path,
             )),
           ]);
         });
@@ -91,8 +105,8 @@ void main() {
           expect(result.isError, isNot(true));
           expect(testProcessManager.commandsRan, [
             equalsCommand((
-              command: [endsWith(appKind), 'pub', 'remove', 'foo'],
-              workingDirectory: fakeAppPath,
+              command: [endsWith(executableName), 'pub', 'remove', 'foo'],
+              workingDirectory: testRoot.path,
             )),
           ]);
         });
@@ -113,8 +127,8 @@ void main() {
           expect(result.isError, isNot(true));
           expect(testProcessManager.commandsRan, [
             equalsCommand((
-              command: [endsWith(appKind), 'pub', 'get'],
-              workingDirectory: fakeAppPath,
+              command: [endsWith(executableName), 'pub', 'get'],
+              workingDirectory: testRoot.path,
             )),
           ]);
         });
@@ -135,8 +149,8 @@ void main() {
           expect(result.isError, isNot(true));
           expect(testProcessManager.commandsRan, [
             equalsCommand((
-              command: [endsWith(appKind), 'pub', 'upgrade'],
-              workingDirectory: fakeAppPath,
+              command: [endsWith(executableName), 'pub', 'upgrade'],
+              workingDirectory: testRoot.path,
             )),
           ]);
         });
@@ -162,7 +176,7 @@ void main() {
           expect(result.isError, isNot(true));
           expect(testProcessManager.commandsRan, [
             equalsCommand((
-              command: [endsWith(appKind), 'pub', 'get'],
+              command: [endsWith(executableName), 'pub', 'get'],
               workingDirectory: p.join(fakeAppPath, 'subdir'),
             )),
           ]);
