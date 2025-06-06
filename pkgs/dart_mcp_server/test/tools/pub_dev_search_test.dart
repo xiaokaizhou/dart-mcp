@@ -69,6 +69,11 @@ void main() {
               'Utility for wrapping an asynchronous function in automatic '
               'retry logic with exponential back-off, useful when making '
               'requests over network.',
+          'homepage': 'https://github.com/google/dart-neats/tree/master/retry',
+          'repository': 'https://github.com/google/dart-neats.git',
+          'libraries': {
+            'retry': 'https://pub.dev/documentation/retry/latest/retry/',
+          },
           'scores': {
             'pubPoints': isA<int>(),
             'maxPubPoints': isA<int>(),
@@ -82,6 +87,35 @@ void main() {
             'license:osi-approved',
           ],
           'publisher': 'publisher:google.dev',
+        });
+        expect(json.decode((result.content[2] as TextContent).text), {
+          'packageName': 'dio_smart_retry',
+          'latestVersion': '7.0.1',
+          'description':
+              'Retry library for Dio and Dio package made with love. By '
+              'default, the request will be retried only for '
+              'appropriate retryable http statuses.',
+          'homepage': 'https://github.com/rodion-m/dio_smart_retry',
+          'repository': 'https://github.com/rodion-m/dio_smart_retry',
+          'documentation':
+              'https://github.com/rodion-m/dio_smart_retry#contents',
+          'libraries': {
+            'dio_smart_retry':
+                'https://pub.dev/documentation/dio_smart_retry/latest/dio_smart_retry/',
+          },
+          'scores': {
+            'pubPoints': isA<int>(),
+            'maxPubPoints': isA<int>(),
+            'likes': isA<int>(),
+            'downloadCount': isA<int>(),
+          },
+          'topics': isEmpty,
+          'licenses': [
+            'license:mit',
+            'license:fsf-libre',
+            'license:osi-approved',
+          ],
+          'publisher': 'publisher:rodion-m.ru',
         });
       });
     }, _GoldenResponseClient.new);
@@ -179,10 +213,8 @@ class _FixedResponseClient implements Client {
   _FixedResponseClient(this.handler);
 
   _FixedResponseClient.withMappedResponses(Map<String, String> responses)
-    : handler =
-          ((url) =>
-              responses[url.toString()] ??
-              (throw ClientException('No internet')));
+    : handler = ((url) =>
+          responses[url.toString()] ?? (throw ClientException('No internet')));
 
   @override
   Future<String> read(Uri url, {Map<String, String>? headers}) async {
