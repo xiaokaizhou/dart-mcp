@@ -29,7 +29,13 @@ extension type ListToolsResult.fromMap(Map<String, Object?> _value)
     if (meta != null) '_meta': meta,
   });
 
-  List<Tool> get tools => (_value['tools'] as List).cast<Tool>();
+  List<Tool> get tools {
+    final tools = (_value['tools'] as List?)?.cast<Tool>();
+    if (tools == null) {
+      throw ArgumentError('Missing tools field in $ListToolsResult');
+    }
+    return tools;
+  }
 }
 
 /// The server's response to a tool call.
@@ -56,7 +62,13 @@ extension type CallToolResult.fromMap(Map<String, Object?> _value)
 
   /// The type of content, either [TextContent], [ImageContent],
   /// or [EmbeddedResource],
-  List<Content> get content => (_value['content'] as List).cast<Content>();
+  List<Content> get content {
+    final content = (_value['content'] as List?)?.cast<Content>();
+    if (content == null) {
+      throw ArgumentError('Missing content field in $CallToolResult');
+    }
+    return content;
+  }
 
   /// Whether the tool call ended in an error.
   ///
@@ -129,14 +141,26 @@ extension type Tool.fromMap(Map<String, Object?> _value) {
           as ToolAnnotations?;
 
   /// The name of the tool.
-  String get name => _value['name'] as String;
+  String get name {
+    final name = _value['name'] as String?;
+    if (name == null) {
+      throw ArgumentError('Missing name field in $Tool');
+    }
+    return name;
+  }
 
   /// A human-readable description of the tool.
   String? get description => _value['description'] as String?;
 
   /// A JSON [ObjectSchema] object defining the expected parameters for the
   /// tool.
-  ObjectSchema get inputSchema => _value['inputSchema'] as ObjectSchema;
+  ObjectSchema get inputSchema {
+    final inputSchema = _value['inputSchema'] as ObjectSchema?;
+    if (inputSchema == null) {
+      throw ArgumentError('Missing inputSchema field in $Tool');
+    }
+    return inputSchema;
+  }
 }
 
 /// Additional properties describing a Tool to clients.
@@ -196,6 +220,7 @@ enum JsonType {
   num('number'),
   int('integer'),
   bool('boolean'),
+  enumeration('enum'),
   nil('null');
 
   const JsonType(this.typeName);
@@ -237,6 +262,9 @@ enum ValidationErrorType {
   minLengthNotMet,
   maxLengthExceeded,
   patternMismatch,
+
+  // Enum specific
+  enumValueNotAllowed,
 
   // Number/Integer specific
   minimumNotMet,
@@ -334,6 +362,9 @@ extension type Schema.fromMap(Map<String, Object?> _value) {
   /// Alias for [ObjectSchema.new].
   static const object = ObjectSchema.new;
 
+  /// Alias for [EnumSchema.new].
+  static const enumeration = EnumSchema.new;
+
   /// Alias for [NullSchema.new].
   static const nil = NullSchema.new;
 
@@ -420,6 +451,12 @@ extension SchemaValidation on Schema {
           );
         case JsonType.int:
           isValid = (this as IntegerSchema)._validateInteger(
+            data,
+            currentPath,
+            accumulatedFailures,
+          );
+        case JsonType.enumeration:
+          isValid = (this as EnumSchema)._validateEnum(
             data,
             currentPath,
             accumulatedFailures,
@@ -1078,6 +1115,66 @@ extension type const StringSchema.fromMap(Map<String, Object?> _value)
       );
     }
     return isValid;
+  }
+}
+
+/// A JSON Schema definition for a set of allowed string values.
+extension type EnumSchema.fromMap(Map<String, Object?> _value)
+    implements Schema {
+  factory EnumSchema({
+    String? title,
+    String? description,
+    required Iterable<String> values,
+  }) => EnumSchema.fromMap({
+    'type': JsonType.enumeration.typeName,
+    if (title != null) 'title': title,
+    if (description != null) 'description': description,
+    'enum': values,
+  });
+
+  /// A title for this schema, should be short.
+  String? get title => _value['title'] as String?;
+
+  /// A description of this schema.
+  String? get description => _value['description'] as String?;
+
+  /// The allowed enum values.
+  Iterable<String> get values {
+    final values = (_value['enum'] as Iterable?)?.cast<String>();
+    if (values == null) {
+      throw ArgumentError('Missing required property "values"');
+    }
+    assert(
+      values.toSet().length == values.length,
+      "The 'values' property has duplicate entries.",
+    );
+    return values;
+  }
+
+  bool _validateEnum(
+    Object? data,
+    List<String> currentPath,
+    HashSet<ValidationError> accumulatedFailures,
+  ) {
+    if (data is! String) {
+      accumulatedFailures.add(
+        ValidationError(ValidationErrorType.typeMismatch, path: currentPath),
+      );
+      return false;
+    }
+    if (!values.contains(data)) {
+      accumulatedFailures.add(
+        ValidationError(
+          ValidationErrorType.enumValueNotAllowed,
+          path: currentPath,
+          details:
+              'String "$data" is not one of the allowed values: '
+              '${values.join(', ')}',
+        ),
+      );
+      return false;
+    }
+    return true;
   }
 }
 
