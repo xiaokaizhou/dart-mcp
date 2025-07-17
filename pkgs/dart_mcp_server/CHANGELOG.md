@@ -4,6 +4,7 @@
   failure.
 * Add failure reason field to analytics events so we can know why tool calls are
   failing.
+* Add a flutter_driver command for executing flutter driver commands on a device.
 * Allow for multiple package arguments to `pub add` and `pub remove`.
 * Require dart_mcp version 0.3.1.
 
