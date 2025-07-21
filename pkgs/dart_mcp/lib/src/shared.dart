@@ -131,8 +131,6 @@ base class MCPBase {
 
   /// The peer may ping us at any time, and we should respond with an empty
   /// response.
-  ///
-  /// Note that [PingRequest] is always actually just `null`.
   EmptyResult _handlePing([PingRequest? _]) => EmptyResult();
 
   /// Handles [ProgressNotification]s and forwards them to the streams returned
@@ -172,11 +170,13 @@ base class MCPBase {
   ///
   /// If the timeout is reached, future values or errors from the ping request
   /// are ignored.
-  Future<bool> ping({Duration timeout = const Duration(seconds: 1)}) =>
-      sendRequest<EmptyResult>(
-        PingRequest.methodName,
-        null,
-      ).then((_) => true).timeout(timeout, onTimeout: () => false);
+  Future<bool> ping({
+    Duration timeout = const Duration(seconds: 1),
+    PingRequest? request,
+  }) => sendRequest<EmptyResult>(
+    PingRequest.methodName,
+    request,
+  ).then((_) => true).timeout(timeout, onTimeout: () => false);
 
   /// If [protocolLogSink] is non-null, emits messages to it for all messages
   /// sent over [channel].

@@ -127,6 +127,21 @@ void main() {
     );
   });
 
+  // Regression test for https://github.com/dart-lang/ai/issues/238.
+  test('client and server can handle ping with non-null parameters', () async {
+    final environment = TestEnvironment(TestMCPClient(), TestMCPServer.new);
+    await environment.initializeServer();
+
+    await expectLater(
+      environment.serverConnection.ping(request: PingRequest()),
+      completes,
+    );
+    await expectLater(
+      environment.server.ping(request: PingRequest()),
+      completes,
+    );
+  });
+
   test(
     'server can handle initialized notification with null parameters',
     () async {
