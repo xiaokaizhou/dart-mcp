@@ -181,6 +181,11 @@ base mixin DartToolingDaemonSupport
           return _flutterDriverNotRegistered;
         }
         final vm = await vmService.getVM();
+        final timeout = request.arguments?['timeout'] as String?;
+        final isScreenshot = request.arguments?['command'] == 'screenshot';
+        if (isScreenshot) {
+          request.arguments?.putIfAbsent('format', () => '4' /*png*/);
+        }
         final result = await vmService
             .callServiceExtension(
               _flutterDriverService,
@@ -189,9 +194,9 @@ base mixin DartToolingDaemonSupport
             )
             .timeout(
               Duration(
-                milliseconds:
-                    (request.arguments?['timeout'] as int?) ??
-                    _defaultTimeoutMs,
+                milliseconds: timeout != null
+                    ? int.parse(timeout)
+                    : _defaultTimeoutMs,
               ),
               onTimeout: () => Response.parse({
                 'isError': true,
@@ -199,7 +204,17 @@ base mixin DartToolingDaemonSupport
               })!,
             );
         return CallToolResult(
-          content: [Content.text(text: jsonEncode(result.json))],
+          content: [
+            isScreenshot && result.json?['isError'] == false
+                ? Content.image(
+                    data:
+                        (result.json!['response']
+                                as Map<String, Object?>)['data']
+                            as String,
+                    mimeType: 'image/png',
+                  )
+                : Content.text(text: jsonEncode(result.json)),
+          ],
           isError: result.json?['isError'] as bool?,
         );
       },
@@ -461,15 +476,14 @@ base mixin DartToolingDaemonSupport
       callback: (vmService) async {
         final vm = await vmService.getVM();
         final isolateId = vm.isolates!.first.id;
+        final summaryOnly = request.arguments?['summaryOnly'] as bool? ?? false;
         try {
           final result = await vmService.callServiceExtension(
             '$_inspectorServiceExtensionPrefix.getRootWidgetTree',
             isolateId: isolateId,
             args: {
               'groupName': inspectorObjectGroup,
-              // TODO: consider making these configurable or using defaults that
-              // are better for the LLM.
-              'isSummaryTree': 'true',
+              'isSummaryTree': summaryOnly ? 'true' : 'false',
               'withPreviews': 'true',
               'fullDetails': 'false',
             },
@@ -647,19 +661,19 @@ base mixin DartToolingDaemonSupport
     inputSchema: Schema.object(
       additionalProperties: true,
       description:
-          'The flutter driver command to run. Command arguments should be '
-          'passed as additional properties to this map.\n\nWhen searching for '
-          'widgets, you should first inspect the widget tree in order to '
-          'figure out how to find the widget instead of just guessing tooltip '
-          'text or other things.',
+          'Command arguments are passed as additional properties to this map.'
+          'To specify a widgets, you should first use the '
+          '"${getWidgetTreeTool.name}" tool to inspect the widget tree for the '
+          'value id of the widget and then use the "ByValueKey" finder type '
+          'with that id.',
       properties: {
         'command': Schema.string(
           // Commented out values are flutter_driver commands that are not
           // supported, but may be in the future.
           enumValues: [
             'get_health',
-            'get_layer_tree',
-            'get_render_tree',
+            // 'get_layer_tree',
+            // 'get_render_tree',
             'enter_text',
             'send_text_input_action',
             'get_text',
@@ -680,39 +694,40 @@ base mixin DartToolingDaemonSupport
             // 'get_semantics_id',
             'get_offset',
             'get_diagnostics_tree',
-            // 'screenshot',
+            'screenshot',
           ],
           description: 'The name of the driver command',
         ),
-        'alignment': Schema.num(
+        'alignment': Schema.string(
           description:
-              'How the widget should be aligned. '
-              'Required for the scrollIntoView command',
+              'Required for the scrollIntoView command, how the widget should '
+              'be aligned',
         ),
-        'duration': Schema.int(
+        'duration': Schema.string(
           description:
-              'The duration of the scrolling action in microseconds. '
-              'Required for the scroll command',
+              'Required for the scroll command, the duration of the '
+              'scrolling action in microseconds as a stringified integer.',
         ),
-        'dx': Schema.int(
+        'dx': Schema.string(
           description:
-              'Delta X offset for  move event. Required for the scroll command',
+              'Required for the scroll command, the delta X offset for move '
+              'event as a stringified double',
         ),
-        'dy': Schema.int(
+        'dy': Schema.string(
           description:
-              'Delta Y offset for  move event. Required for the scroll command',
+              'Required for the scroll command, the delta Y offset for move '
+              'event as a stringified double',
         ),
-        'frequency': Schema.int(
+        'frequency': Schema.string(
           description:
-              'The frequency in Hz of the generated move events. '
-              'Required for the scroll command',
+              'Required for the scroll command, the frequency in Hz of the '
+              'generated move events as a stringified integer',
         ),
         'finderType': Schema.string(
           description:
-              'The kind of finder to use, if required for the command. '
               'Required for get_text, scroll, scroll_into_view, tap, waitFor, '
               'waitForAbsent, waitForTappable, get_offset, and '
-              'get_diagnostics_tree',
+              'get_diagnostics_tree. The kind of finder to use.',
           enumValues: [
             'ByType',
             'ByValueKey',
@@ -733,10 +748,11 @@ base mixin DartToolingDaemonSupport
           description:
               'Required for the ByValueKey finder, the type of the key',
         ),
-        'isRegExp': Schema.bool(
+        'isRegExp': Schema.string(
           description:
               'Used by the BySemanticsLabel finder, indicates whether '
               'the value should be treated as a regex',
+          enumValues: ['true', 'false'],
         ),
         'label': Schema.string(
           description:
@@ -745,8 +761,8 @@ base mixin DartToolingDaemonSupport
         ),
         'text': Schema.string(
           description:
-              'The relevant text for the command. Required for the ByText and '
-              'ByTooltipMessage finders, as well as the enter_text command.',
+              'Required for the ByText and ByTooltipMessage finders, as well '
+              'as the enter_text command. The relevant text for the command',
         ),
         'type': Schema.string(
           description:
@@ -807,9 +823,7 @@ base mixin DartToolingDaemonSupport
               'complete. Defaults to $_defaultTimeoutMs.',
         ),
         'offsetType': Schema.string(
-          description:
-              'Offset types that can be requested by get_offset. '
-              'Required for get_offset.',
+          description: 'Required for get_offset, the offset type to get',
           enumValues: [
             'topLeft',
             'topRight',
@@ -820,22 +834,26 @@ base mixin DartToolingDaemonSupport
         ),
         'diagnosticsType': Schema.string(
           description:
-              'The type of diagnostics tree to request. '
-              'Required for get_diagnostics_tree',
+              'Required for get_diagnostics_tree, the type of diagnostics tree '
+              'to request',
           enumValues: ['renderObject', 'widget'],
         ),
-        'subtreeDepth': Schema.int(
+        'subtreeDepth': Schema.string(
           description:
-              'How many levels of children to include in the result. '
-              'Required for get_diagnostics_tree',
+              'Required for get_diagnostics_tree, how many levels of children '
+              'to include in the result, as a stringified integer',
         ),
-        'includeProperties': Schema.bool(
+        'includeProperties': Schema.string(
           description:
               'Whether the properties of a diagnostics node should be included '
               'in get_diagnostics_tree results',
+          enumValues: const ['true', 'false'],
         ),
-        'enabled': Schema.bool(
-          description: 'Used by set_text_entry_emulation, defaults to false',
+        'enabled': Schema.string(
+          description:
+              'Used by set_text_entry_emulation, defaults to '
+              'false',
+          enumValues: const ['true', 'false'],
         ),
       },
       required: ['command'],
@@ -920,7 +938,15 @@ base mixin DartToolingDaemonSupport
         'Retrieves the widget tree from the active Flutter application. '
         'Requires "${connectTool.name}" to be successfully called first.',
     annotations: ToolAnnotations(title: 'Get widget tree', readOnlyHint: true),
-    inputSchema: Schema.object(),
+    inputSchema: Schema.object(
+      properties: {
+        'summaryOnly': Schema.bool(
+          description:
+              'Defaults to false. If true, only widgets created by user code '
+              'are returned.',
+        ),
+      },
+    ),
   );
 
   @visibleForTesting

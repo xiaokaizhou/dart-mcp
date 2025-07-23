@@ -232,11 +232,28 @@ void main() {
         });
       });
 
+      test('can take a screenshot using flutter_driver', () async {
+        await testHarness.startDebugSession(
+          counterAppPath,
+          'lib/driver_main.dart',
+          isFlutter: true,
+        );
+        final screenshotResult = await testHarness.callToolWithRetry(
+          CallToolRequest(
+            name: DartToolingDaemonSupport.flutterDriverTool.name,
+            arguments: {'command': 'screenshot'},
+          ),
+        );
+        expect(screenshotResult.content.single, {
+          'data': anything,
+          'mimeType': 'image/png',
+          'type': ImageContent.expectedType,
+        });
+      });
+
       group('get selected widget', () {
         test('when a selected widget exists', () async {
           final server = testHarness.serverConnectionPair.server!;
-          final tools =
-              (await testHarness.mcpServerConnection.listTools()).tools;
 
           await testHarness.startDebugSession(
             counterAppPath,
@@ -245,11 +262,11 @@ void main() {
           );
           await server.updateActiveVmServices();
 
-          final getWidgetTreeTool = tools.singleWhere(
-            (t) => t.name == DartToolingDaemonSupport.getWidgetTreeTool.name,
-          );
           final getWidgetTreeResult = await testHarness.callToolWithRetry(
-            CallToolRequest(name: getWidgetTreeTool.name),
+            CallToolRequest(
+              name: DartToolingDaemonSupport.getWidgetTreeTool.name,
+              arguments: {'summaryOnly': true},
+            ),
           );
 
           // Select the first child of the [root] widget.
@@ -273,12 +290,10 @@ void main() {
           );
 
           // Confirm we can get the selected widget from the MCP tool.
-          final getSelectedWidgetTool = tools.singleWhere(
-            (t) =>
-                t.name == DartToolingDaemonSupport.getSelectedWidgetTool.name,
-          );
-          final getSelectedWidgetResult = await testHarness.callToolWithRetry(
-            CallToolRequest(name: getSelectedWidgetTool.name),
+          final getSelectedWidgetResult = await testHarness.callTool(
+            CallToolRequest(
+              name: DartToolingDaemonSupport.getSelectedWidgetTool.name,
+            ),
           );
           expect(getSelectedWidgetResult.isError, isNot(true));
           expect(
@@ -293,14 +308,10 @@ void main() {
             'lib/main.dart',
             isFlutter: true,
           );
-          final tools =
-              (await testHarness.mcpServerConnection.listTools()).tools;
-          final getSelectedWidgetTool = tools.singleWhere(
-            (t) =>
-                t.name == DartToolingDaemonSupport.getSelectedWidgetTool.name,
-          );
           final getSelectedWidgetResult = await testHarness.callToolWithRetry(
-            CallToolRequest(name: getSelectedWidgetTool.name),
+            CallToolRequest(
+              name: DartToolingDaemonSupport.getSelectedWidgetTool.name,
+            ),
           );
 
           expect(getSelectedWidgetResult.isError, isNot(true));
@@ -601,7 +612,7 @@ void main() {
         ]);
 
         // Test missing 'enabled' argument
-        final missingArgResult = await testHarness.callToolWithRetry(
+        final missingArgResult = await testHarness.callTool(
           CallToolRequest(name: setSelectionModeTool.name),
           expectError: true,
         );
