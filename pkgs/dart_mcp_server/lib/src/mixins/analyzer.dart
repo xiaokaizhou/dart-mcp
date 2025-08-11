@@ -14,7 +14,9 @@ import 'package:meta/meta.dart';
 
 import '../lsp/wire_format.dart';
 import '../utils/analytics.dart';
+import '../utils/cli_utils.dart';
 import '../utils/constants.dart';
+import '../utils/file_system.dart';
 import '../utils/sdk.dart';
 
 /// Mix this in to any MCPServer to add support for analyzing Dart projects.
@@ -22,7 +24,7 @@ import '../utils/sdk.dart';
 /// The MCPServer must already have the [ToolsSupport] and [LoggingSupport]
 /// mixins applied.
 base mixin DartAnalyzerSupport
-    on ToolsSupport, LoggingSupport, RootsTrackingSupport
+    on ToolsSupport, LoggingSupport, RootsTrackingSupport, FileSystemSupport
     implements SdkSupport {
   /// The LSP server connection for the analysis server.
   Peer? _lspConnection;
@@ -249,8 +251,54 @@ base mixin DartAnalyzerSupport
     final errorResult = await _ensurePrerequisites(request);
     if (errorResult != null) return errorResult;
 
+    var rootConfigs = (request.arguments?[ParameterNames.roots] as List?)
+        ?.cast<Map<String, Object?>>();
+    final allRoots = await roots;
+
+    if (rootConfigs != null && rootConfigs.isEmpty) {
+      // Have to have at least one root set.
+      return noRootsSetResponse;
+    }
+
+    // Default to use the known roots if none were specified.
+    rootConfigs ??= [
+      for (final root in allRoots) {ParameterNames.root: root.uri},
+    ];
+
+    final requestedUris = <Uri>{};
+    for (final rootConfig in rootConfigs) {
+      final validated = validateRootConfig(
+        rootConfig,
+        knownRoots: allRoots,
+        fileSystem: fileSystem,
+      );
+
+      if (validated.errorResult != null) {
+        return errorResult!;
+      }
+
+      final rootUri = Uri.parse(validated.root!.uri);
+
+      if (validated.paths != null && validated.paths!.isNotEmpty) {
+        for (final path in validated.paths!) {
+          requestedUris.add(rootUri.resolve(path));
+        }
+      } else {
+        requestedUris.add(rootUri);
+      }
+    }
+
+    final entries = diagnostics.entries.where((entry) {
+      final entryPath = entry.key.toFilePath();
+      return requestedUris.any((uri) {
+        final requestedPath = uri.toFilePath();
+        return fileSystem.path.equals(requestedPath, entryPath) ||
+            fileSystem.path.isWithin(requestedPath, entryPath);
+      });
+    });
+
     final messages = <Content>[];
-    for (var entry in diagnostics.entries) {
+    for (var entry in entries) {
       for (var diagnostic in entry.value) {
         final diagnosticJson = diagnostic.toJson();
         diagnosticJson[ParameterNames.uri] = entry.key.toString();
@@ -411,8 +459,10 @@ base mixin DartAnalyzerSupport
   @visibleForTesting
   static final analyzeFilesTool = Tool(
     name: 'analyze_files',
-    description: 'Analyzes the entire project for errors.',
-    inputSchema: Schema.object(),
+    description: 'Analyzes specific paths, or the entire project, for errors.',
+    inputSchema: Schema.object(
+      properties: {ParameterNames.roots: rootsSchema(supportsPaths: true)},
+    ),
     annotations: ToolAnnotations(title: 'Analyze projects', readOnlyHint: true),
   );
 
