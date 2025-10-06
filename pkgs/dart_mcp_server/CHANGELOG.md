@@ -16,6 +16,8 @@
 * Stop reporting non-zero exit codes from command line tools as tool errors.
 * Add descriptions for pub tools, add support for `pub deps` and `pub outdated`.
 * Fix a bug in hot_reload ([#290](https://github.com/dart-lang/ai/issues/290)).
+* Add the `list_devices`, `launch_app`, `get_app_logs`, and `list_running_apps`
+  tools for running Flutter apps.
 
 # 0.1.0 (Dart SDK 3.9.0)
 
