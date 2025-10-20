@@ -86,7 +86,8 @@ base class MCPBase {
         '${p.value.runtimeType}',
       );
     }
-    return impl((p.value as Map?)?.cast<String, Object?>() as T);
+    print('Request $name with $p');
+    return impl(p.value==null?(<String, Object?>{}) as T:(p.value as Map?)?.cast<String, Object?>() as T);
   });
 
   /// Registers a notification handler named [name] on this server.
@@ -95,9 +96,12 @@ base class MCPBase {
     void Function(T) impl,
   ) => _peer.registerMethod(
     name,
-    (Parameters p) => impl(
-      (p.value as Map? ?? <String, Object?>{}).cast<String, Object?>() as T,
-    ),
+    (Parameters p){
+      print('Notification $name with $p');
+      return impl(
+     p.value==null?(<String, Object?>{}) as T: (p.value as Map? ?? <String, Object?>{}).cast<String, Object?>() as T,
+    );
+    },
   );
 
   /// Sends a notification to the peer.
